@@ -1,0 +1,78 @@
+@model DashboardViewModel
+@{ ViewData["Title"] = "首頁"; }
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4><i class="bi bi-speedometer2"></i> 儀表板</h4>
+    <span class="text-muted">歡迎，@User.FindFirst("DisplayName")?.Value</span>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card border-primary">
+            <div class="card-body text-center">
+                <h5 class="card-title text-primary"><i class="bi bi-arrow-return-left"></i> 待處理</h5>
+                <p class="display-6 fw-bold">@Model.MyPendingRequests</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-success">
+            <div class="card-body text-center">
+                <h5 class="card-title text-success"><i class="bi bi-file-earmark-text"></i> 我的申請</h5>
+                <p class="display-6 fw-bold">@Model.MyTotalRequests</p>
+            </div>
+        </div>
+    </div>
+    @if (User.IsInRole("Manager") || User.IsInRole("Admin"))
+    {
+        <div class="col-md-3">
+            <div class="card border-warning">
+                <div class="card-body text-center">
+                    <h5 class="card-title text-warning"><i class="bi bi-clock"></i> 待審核</h5>
+                    <p class="display-6 fw-bold">@Model.PendingApprovals</p>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-list-ul"></i> 最近申請</span>
+        <a asp-controller="Requests" asp-action="MyRequests" class="btn btn-sm btn-outline-primary">查看全部</a>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>申請單號</th>
+                    <th>表單名稱</th>
+                    <th>狀態</th>
+                    <th>送出時間</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (!Model.RecentRequests.Any())
+                {
+                    <tr><td colspan="5" class="text-center text-muted py-4">尚無申請紀錄</td></tr>
+                }
+                @foreach (var r in Model.RecentRequests)
+                {
+                    <tr>
+                        <td><code>@r.RequestNo</code></td>
+                        <td>@r.FormName</td>
+                        <td>@await Html.PartialAsync("_StatusBadge", r.Status)</td>
+                        <td class="text-muted">@r.SubmittedAt?.ToString("yyyy-MM-dd HH:mm")</td>
+                        <td>
+                            <a asp-controller="Requests" asp-action="Detail" asp-route-id="@r.Id"
+                               class="btn btn-sm btn-outline-secondary">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

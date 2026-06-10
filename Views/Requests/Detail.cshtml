@@ -1,0 +1,194 @@
+@model RequestDetailViewModel
+@{
+    ViewData["Title"] = "申請明細";
+    var isApprover = User.IsInRole("Manager") || User.IsInRole("Admin");
+    var isOwner = Model.Request.ApplicantId.ToString() == User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4><i class="bi bi-file-text"></i> 申請明細</h4>
+    <div>
+        @if (isApprover && Model.Request.Status == "Pending")
+        {
+            <a asp-controller="Approvals" asp-action="Index" class="btn btn-outline-primary btn-sm">
+                <i class="bi bi-arrow-left"></i> 回待審核
+            </a>
+        }
+        <a asp-controller="Requests" asp-action="MyRequests" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-list"></i> 回列表
+        </a>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-8">
+        <div class="card mb-3">
+            <div class="card-header">
+                <i class="bi bi-info-circle"></i> 基本資訊
+            </div>
+            <div class="card-body">
+                <div class="row mb-2">
+                    <div class="col-sm-3 text-muted">申請單號</div>
+                    <div class="col-sm-9"><code>@Model.Request.RequestNo</code></div>
+                </div>
+                <div class="row mb-2">
+                    <div class="col-sm-3 text-muted">表單名稱</div>
+                    <div class="col-sm-9">@Model.Request.FormName</div>
+                </div>
+                <div class="row mb-2">
+                    <div class="col-sm-3 text-muted">申請人</div>
+                    <div class="col-sm-9">@Model.Request.ApplicantName</div>
+                </div>
+                <div class="row mb-2">
+                    <div class="col-sm-3 text-muted">送出時間</div>
+                    <div class="col-sm-9">@Model.Request.SubmittedAt?.ToString("yyyy-MM-dd HH:mm")</div>
+                </div>
+                <div class="row mb-2">
+                    <div class="col-sm-3 text-muted">狀態</div>
+                    <div class="col-sm-9">@await Html.PartialAsync("_StatusBadge", Model.Request.Status)</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">
+                <i class="bi bi-table"></i> 表單內容
+            </div>
+            <div class="card-body">
+                @foreach (var field in Model.Fields)
+                {
+                    var value = Model.Values.FirstOrDefault(v => v.FieldKey == field.FieldKey);
+                    <div class="row mb-2">
+                        <div class="col-sm-3 text-muted">@field.FieldName</div>
+                        <div class="col-sm-9">@(value?.FieldValue ?? "-")</div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @if (Model.Request.Status == "Rejected" && isOwner)
+        {
+            <div class="card mb-3 border-danger">
+                <div class="card-header bg-danger text-white">
+                    <i class="bi bi-arrow-return-left"></i> 重新送出
+                </div>
+                <div class="card-body">
+                    <form asp-action="Resubmit" asp-route-id="@Model.Request.Id" method="post">
+                        @foreach (var field in Model.Fields)
+                        {
+                            var value = Model.Values.FirstOrDefault(v => v.FieldKey == field.FieldKey);
+                            <div class="mb-2">
+                                <label class="form-label">@field.FieldName</label>
+                                @switch (field.FieldType)
+                                {
+                                    case "Textarea":
+                                        <textarea name="field_@field.Id" class="form-control" rows="2">@value?.FieldValue</textarea>
+                                        break;
+                                    case "Number":
+                                        <input type="number" name="field_@field.Id" class="form-control" value="@value?.FieldValue" />
+                                        break;
+                                    case "Date":
+                                        <input type="date" name="field_@field.Id" class="form-control" value="@value?.FieldValue" />
+                                        break;
+                                    case "Select":
+                                        var opts = (field.OptionsJson ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                                        <select name="field_@field.Id" class="form-select">
+                                            @foreach (var o in opts)
+                                            {
+                                                <option value="@o" selected="@(value?.FieldValue == o)">@o</option>
+                                            }
+                                        </select>
+                                        break;
+                                    default:
+                                        <input type="text" name="field_@field.Id" class="form-control" value="@value?.FieldValue" />
+                                        break;
+                                }
+                            </div>
+                        }
+                        <button type="submit" class="btn btn-warning">
+                            <i class="bi bi-send"></i> 重新送出
+                        </button>
+                    </form>
+                </div>
+            </div>
+        }
+
+        @if (isApprover && Model.Request.Status == "Pending")
+        {
+            <div class="card mb-3 border-success">
+                <div class="card-header bg-success text-white">
+                    <i class="bi bi-check2-square"></i> 審核操作
+                </div>
+                <div class="card-body">
+                    <form asp-controller="Approvals" asp-action="Approve" asp-route-id="@Model.Request.Id" method="post" class="d-inline">
+                        <button type="submit" class="btn btn-success me-2">
+                            <i class="bi bi-check-lg"></i> 核准
+                        </button>
+                    </form>
+
+                    <form asp-controller="Approvals" asp-action="Reject" asp-route-id="@Model.Request.Id" method="post" class="d-inline"
+                          onsubmit="return confirm('確定要退回此申請？')">
+                        <div class="input-group mt-2">
+                            <input type="text" name="comment" class="form-control" placeholder="退回原因" required />
+                            <button type="submit" class="btn btn-danger">
+                                <i class="bi bi-x-lg"></i> 退回
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-clock-history"></i> 審核紀錄
+            </div>
+            <div class="card-body p-0">
+                <div class="list-group list-group-flush">
+                    @foreach (var log in Model.ApprovalLogs)
+                    {
+                        var icon = log.Action switch
+                        {
+                            "Submit" => "bi-send text-primary",
+                            "Approve" => "bi-check-circle text-success",
+                            "Reject" => "bi-x-circle text-danger",
+                            "Resubmit" => "bi-arrow-return-left text-info",
+                            _ => "bi-record"
+                        };
+                        <div class="list-group-item">
+                            <div class="d-flex align-items-center">
+                                <i class="bi @icon me-2 fs-5"></i>
+                                <div>
+                                    <strong>@log.Action</strong>
+                                    <div class="text-muted small">@log.ActorName</div>
+                                    <div class="text-muted small">@log.CreatedAt.ToString("yyyy-MM-dd HH:mm")</div>
+                                    @if (!string.IsNullOrEmpty(log.Comment))
+                                    {
+                                        <div class="mt-1 p-1 bg-light rounded small">@log.Comment</div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    @if (!Model.ApprovalLogs.Any())
+                    {
+                        <div class="list-group-item text-muted text-center">尚無紀錄</div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        @if (isApprover || isOwner)
+        {
+            <div class="mt-2">
+                <form asp-controller="Exports" asp-action="ExportSingle" asp-route-id="@Model.Request.Id" method="post">
+                    <button type="submit" class="btn btn-outline-success btn-sm w-100">
+                        <i class="bi bi-download"></i> 匯出 Excel
+                    </button>
+                </form>
+            </div>
+        }
+    </div>
+</div>

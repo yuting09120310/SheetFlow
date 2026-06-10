@@ -1,0 +1,48 @@
+@model IEnumerable<SheetFlow.Models.FormRequest>
+@{ ViewData["Title"] = "我的申請"; }
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4><i class="bi bi-list-check"></i> 我的申請</h4>
+    <div>
+        <a asp-action="MyRequests" class="btn btn-sm btn-outline-secondary @(Context.Request.Query["status"].FirstOrDefault() == null ? "active" : "")">全部</a>
+        <a asp-action="MyRequests" asp-route-status="Pending" class="btn btn-sm btn-outline-warning @(Context.Request.Query["status"].FirstOrDefault() == "Pending" ? "active" : "")">待審核</a>
+        <a asp-action="MyRequests" asp-route-status="Approved" class="btn btn-sm btn-outline-success @(Context.Request.Query["status"].FirstOrDefault() == "Approved" ? "active" : "")">已核准</a>
+        <a asp-action="MyRequests" asp-route-status="Rejected" class="btn btn-sm btn-outline-danger @(Context.Request.Query["status"].FirstOrDefault() == "Rejected" ? "active" : "")">已退回</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>申請單號</th>
+                    <th>表單名稱</th>
+                    <th>狀態</th>
+                    <th>送出時間</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in Model)
+                {
+                    <tr>
+                        <td><code>@r.RequestNo</code></td>
+                        <td>@r.FormName</td>
+                        <td>@await Html.PartialAsync("_StatusBadge", r.Status)</td>
+                        <td class="text-muted">@r.SubmittedAt?.ToString("yyyy-MM-dd HH:mm")</td>
+                        <td>
+                            <a asp-action="Detail" asp-route-id="@r.Id" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-eye"></i> 查看
+                            </a>
+                        </td>
+                    </tr>
+                }
+                @if (!Model.Any())
+                {
+                    <tr><td colspan="5" class="text-center text-muted py-4">尚無申請紀錄</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

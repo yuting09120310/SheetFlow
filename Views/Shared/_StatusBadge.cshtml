@@ -1,0 +1,12 @@
+@model string
+@{
+    var badgeClass = Model switch
+    {
+        "Pending" => "bg-warning text-dark",
+        "Approved" => "bg-success",
+        "Rejected" => "bg-danger",
+        "Resubmitted" => "bg-info text-dark",
+        _ => "bg-secondary"
+    };
+}
+<span class="badge @badgeClass">@Model</span>

@@ -1,0 +1,31 @@
+@model IEnumerable<SheetFlow.Models.FormTemplate>
+@{ ViewData["Title"] = "填寫申請"; }
+
+<h4><i class="bi bi-file-earmark-plus"></i> 填寫申請</h4>
+
+<div class="row g-3 mt-2">
+    @foreach (var t in Model)
+    {
+        <div class="col-md-4">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="bi bi-file-earmark-text text-primary"></i> @t.Name
+                    </h5>
+                    <p class="card-text text-muted">@(t.Description ?? "無說明")</p>
+                    <a asp-action="Submit" asp-route-id="@t.Id" class="btn btn-primary">
+                        <i class="bi bi-pencil-square"></i> 填寫
+                    </a>
+                </div>
+            </div>
+        </div>
+    }
+    @if (!Model.Any())
+    {
+        <div class="col">
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i> 目前沒有可填寫的表單
+            </div>
+        </div>
+    }
+</div>

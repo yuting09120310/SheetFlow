@@ -1,0 +1,68 @@
+@model DynamicFormSubmitViewModel
+@{ ViewData["Title"] = "填寫 - " + Model.FormName; }
+
+<h4><i class="bi bi-pencil-square"></i> @Model.FormName</h4>
+
+<form asp-action="Submit" asp-route-id="@Model.FormTemplateId" method="post">
+    <div class="card">
+        <div class="card-body">
+            @for (int i = 0; i < Model.Fields.Count; i++)
+            {
+                var field = Model.Fields[i];
+                <div class="mb-3">
+                    <label class="form-label">
+                        @field.FieldName
+                        @if (field.IsRequired)
+                        {
+                            <span class="text-danger">*</span>
+                        }
+                    </label>
+
+                    @switch (field.FieldType)
+                    {
+                        case "Textarea":
+                            <textarea name="field_@field.FieldId" class="form-control" rows="3"
+                                      @(field.IsRequired ? "required" : "")>@field.Value</textarea>
+                            break;
+                        case "Number":
+                            <input type="number" name="field_@field.FieldId" class="form-control"
+                                   value="@field.Value" @(field.IsRequired ? "required" : "") step="any" />
+                            break;
+                        case "Date":
+                            <input type="date" name="field_@field.FieldId" class="form-control"
+                                   value="@field.Value" @(field.IsRequired ? "required" : "") />
+                            break;
+                        case "Select":
+                            var options = (field.OptionsJson ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                            <select name="field_@field.FieldId" class="form-select" @(field.IsRequired ? "required" : "")>
+                                <option value="">-- 請選擇 --</option>
+                                @foreach (var opt in options)
+                                {
+                                    <option value="@opt" selected="@(field.Value == opt)">@opt</option>
+                                }
+                            </select>
+                            break;
+                        default:
+                            <input type="text" name="field_@field.FieldId" class="form-control"
+                                   value="@field.Value" @(field.IsRequired ? "required" : "") />
+                            break;
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="mt-3">
+        <button type="submit" class="btn btn-primary">
+            <i class="bi bi-send"></i> 送出申請
+        </button>
+        <a asp-action="Index" class="btn btn-outline-secondary">取消</a>
+    </div>
+</form>
+
+@if (!ViewData.ModelState.IsValid)
+{
+    <div class="alert alert-danger mt-3">
+        <div asp-validation-summary="All"></div>
+    </div>
+}

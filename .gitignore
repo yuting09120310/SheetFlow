@@ -1,0 +1,29 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.userosscache
+*.sln.docstates
+*.userprefs
+
+## Visual Studio
+.vs/
+*.csproj.user
+*.dbmdl
+*.jfm
+
+## JetBrains Rider
+.idea/
+*.sln.iml
+
+## User-specific files
+appsettings.Development.json
+
+## Uploads (runtime generated)
+Uploads/
+
+## OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,41 @@
+@model FormTemplateCreateViewModel
+@{ ViewData["Title"] = "新增表單"; }
+
+<h4><i class="bi bi-plus-lg"></i> 新增表單</h4>
+
+<div class="row">
+    <div class="col-md-6">
+        <form asp-action="Create" method="post" enctype="multipart/form-data">
+            <div class="card">
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label asp-for="Name" class="form-label"></label>
+                        <input asp-for="Name" class="form-control" />
+                        <span asp-validation-for="Name" class="text-danger"></span>
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="Description" class="form-label"></label>
+                        <textarea asp-for="Description" class="form-control" rows="3"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="ExcelFile" class="form-label"></label>
+                        <input asp-for="ExcelFile" class="form-control" accept=".xlsx,.xls" />
+                        <small class="text-muted">上傳 Excel 樣板，系統將自動讀取第一列作為欄位名稱</small>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input asp-for="IsActive" class="form-check-input" />
+                        <label asp-for="IsActive" class="form-check-label"></label>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg"></i> 建立
+                    </button>
+                    <a asp-action="Index" class="btn btn-outline-secondary">取消</a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}
