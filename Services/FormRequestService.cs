@@ -9,24 +9,41 @@ public class FormRequestService : IFormRequestService
     private readonly IFormTemplateRepository _templateRepo;
     private readonly IFormRequestRepository _requestRepo;
     private readonly IApprovalRepository _approvalRepo;
+    private readonly IApprovalWorkflowRepository _workflowRepo;
+    private readonly IUserRepository _userRepo;
     private readonly INotificationService _notifService;
 
     public FormRequestService(
         IFormTemplateRepository templateRepo,
         IFormRequestRepository requestRepo,
         IApprovalRepository approvalRepo,
+        IApprovalWorkflowRepository workflowRepo,
+        IUserRepository userRepo,
         INotificationService notifService)
     {
         _templateRepo = templateRepo;
         _requestRepo = requestRepo;
         _approvalRepo = approvalRepo;
+        _workflowRepo = workflowRepo;
+        _userRepo = userRepo;
         _notifService = notifService;
     }
 
-    public async Task<long> SubmitRequestAsync(long templateId, long applicantId, Dictionary<string, string> formValues)
+    public async Task<long> SubmitRequestAsync(long templateId, long applicantId, Dictionary<string, string> formValues, long? prerequisiteRequestId = null)
     {
         var template = await _templateRepo.GetByIdAsync(templateId)
             ?? throw new Exception("表單不存在");
+
+        var applicant = await _userRepo.GetByIdAsync(applicantId)
+            ?? throw new Exception("申請人不存在");
+
+        var dependencies = await _workflowRepo.GetDependenciesByTemplateAsync(templateId);
+        var depList = dependencies.ToList();
+        if (depList.Any() && !prerequisiteRequestId.HasValue)
+        {
+            var depNames = string.Join("、", depList.Select(d => d.RequiredTemplateName));
+            throw new Exception($"此表單需要先有已審核完成的「{depNames}」才能提交");
+        }
 
         var now = DateTime.UtcNow;
         var request = new FormRequest
@@ -59,6 +76,18 @@ public class FormRequestService : IFormRequestService
             await _requestRepo.CreateValueAsync(rv);
         }
 
+        if (prerequisiteRequestId.HasValue)
+        {
+            await _workflowRepo.CreateRequestDependencyAsync(new FormRequestDependency
+            {
+                FormRequestId = requestId,
+                RequiredRequestId = prerequisiteRequestId.Value
+            });
+        }
+
+        var workflow = await _workflowRepo.GetByTemplateAndDepartmentAsync(templateId, applicant.Department);
+        await CreateApprovalStepsAsync(requestId, workflow, applicant);
+
         var log = new ApprovalLog
         {
             FormRequestId = requestId,
@@ -68,7 +97,7 @@ public class FormRequestService : IFormRequestService
         };
         await _approvalRepo.CreateAsync(log);
 
-        await _notifService.NotifyManagersAsync("新申請單", $"有一筆新的「{template.Name}」待審核。");
+        await NotifyNextApproverAsync(requestId, template.Name);
 
         return requestId;
     }
@@ -104,6 +133,25 @@ public class FormRequestService : IFormRequestService
             await _requestRepo.CreateValueAsync(rv);
         }
 
+        var stepInstances = await _workflowRepo.GetStepInstancesByRequestAsync(requestId);
+        var stepList = stepInstances.ToList();
+        if (stepList.Any())
+        {
+            foreach (var step in stepList)
+            {
+                step.Status = "Pending";
+                step.ApprovedAt = null;
+                step.RejectedAt = null;
+                step.Comment = null;
+                step.UpdatedAt = now;
+                await _workflowRepo.UpdateStepInstanceAsync(step);
+            }
+
+            var firstStep = stepList.OrderBy(s => s.StepOrder).First();
+            await ResolveApproverAsync(firstStep, request.ApplicantId);
+            await _workflowRepo.UpdateStepInstanceAsync(firstStep);
+        }
+
         request.Status = "Pending";
         request.SubmittedAt = now;
         request.RejectedAt = null;
@@ -121,7 +169,7 @@ public class FormRequestService : IFormRequestService
         await _approvalRepo.CreateAsync(log);
 
         var template = await _templateRepo.GetByIdAsync(request.FormTemplateId);
-        await _notifService.NotifyManagersAsync("申請單重新送出", $"申請單 {request.RequestNo} 已重新送出。");
+        await NotifyNextApproverAsync(requestId, template?.Name ?? "");
     }
 
     public async Task ApproveRequestAsync(long requestId, long approverId, string? comment)
@@ -129,14 +177,23 @@ public class FormRequestService : IFormRequestService
         var request = await _requestRepo.GetByIdAsync(requestId)
             ?? throw new Exception("申請單不存在");
 
-        if (request.Status != "Pending" && request.Status != "Resubmitted")
-            throw new Exception("此申請單無法核准");
+        var currentStep = await _workflowRepo.GetCurrentStepInstanceAsync(requestId);
+        if (currentStep == null)
+            throw new Exception("此申請單沒有待處理的簽核步驟");
+
+        if (currentStep.AssignedUserId != approverId)
+        {
+            var approver = await _userRepo.GetByIdAsync(approverId);
+            if (approver?.Role != "Admin")
+                throw new Exception("您不是此步驟的簽核者");
+        }
 
         var now = DateTime.UtcNow;
-        request.Status = "Approved";
-        request.ApprovedAt = now;
-        request.UpdatedAt = now;
-        await _requestRepo.UpdateAsync(request);
+        currentStep.Status = "Approved";
+        currentStep.ApprovedAt = now;
+        currentStep.Comment = comment;
+        currentStep.UpdatedAt = now;
+        await _workflowRepo.UpdateStepInstanceAsync(currentStep);
 
         var log = new ApprovalLog
         {
@@ -148,8 +205,26 @@ public class FormRequestService : IFormRequestService
         };
         await _approvalRepo.CreateAsync(log);
 
-        var template = await _templateRepo.GetByIdAsync(request.FormTemplateId);
-        await _notifService.NotifyUserAsync(request.ApplicantId, "申請已核准", $"您的申請「{template?.Name}」({request.RequestNo}) 已核准。");
+        var nextStep = await _workflowRepo.GetCurrentStepInstanceAsync(requestId);
+        if (nextStep != null)
+        {
+            await ResolveApproverAsync(nextStep, request.ApplicantId);
+            await _workflowRepo.UpdateStepInstanceAsync(nextStep);
+            var template = await _templateRepo.GetByIdAsync(request.FormTemplateId);
+            await NotifySpecificUserAsync(nextStep.AssignedUserId!.Value, "待簽核通知",
+                $"申請單 {request.RequestNo} 已輪到您簽核。");
+        }
+        else
+        {
+            request.Status = "Approved";
+            request.ApprovedAt = now;
+            request.UpdatedAt = now;
+            await _requestRepo.UpdateAsync(request);
+
+            var template = await _templateRepo.GetByIdAsync(request.FormTemplateId);
+            await _notifService.NotifyUserAsync(request.ApplicantId, "申請已核准",
+                $"您的申請「{template?.Name}」({request.RequestNo}) 已核准。");
+        }
     }
 
     public async Task RejectRequestAsync(long requestId, long approverId, string comment)
@@ -157,10 +232,24 @@ public class FormRequestService : IFormRequestService
         var request = await _requestRepo.GetByIdAsync(requestId)
             ?? throw new Exception("申請單不存在");
 
-        if (request.Status != "Pending" && request.Status != "Resubmitted")
-            throw new Exception("此申請單無法退回");
+        var currentStep = await _workflowRepo.GetCurrentStepInstanceAsync(requestId);
+        if (currentStep == null)
+            throw new Exception("此申請單沒有待處理的簽核步驟");
+
+        if (currentStep.AssignedUserId != approverId)
+        {
+            var approver = await _userRepo.GetByIdAsync(approverId);
+            if (approver?.Role != "Admin")
+                throw new Exception("您不是此步驟的簽核者");
+        }
 
         var now = DateTime.UtcNow;
+        currentStep.Status = "Rejected";
+        currentStep.RejectedAt = now;
+        currentStep.Comment = comment;
+        currentStep.UpdatedAt = now;
+        await _workflowRepo.UpdateStepInstanceAsync(currentStep);
+
         request.Status = "Rejected";
         request.RejectedAt = now;
         request.UpdatedAt = now;
@@ -188,15 +277,130 @@ public class FormRequestService : IFormRequestService
 
         var values = (await _requestRepo.GetValuesAsync(requestId)).ToList();
         var logs = (await _approvalRepo.GetByRequestIdAsync(requestId)).ToList();
+        var steps = (await _workflowRepo.GetStepInstancesByRequestAsync(requestId)).ToList();
         var fields = (await _templateRepo.GetVisibleFieldsAsync(request.FormTemplateId)).ToList();
+        var deps = (await _workflowRepo.GetDependenciesByRequestAsync(requestId)).ToList();
 
         return new RequestDetailViewModel
         {
             Request = request,
             Values = values,
             ApprovalLogs = logs,
-            Fields = fields
+            StepInstances = steps,
+            Fields = fields,
+            Dependencies = deps
         };
+    }
+
+    private async Task CreateApprovalStepsAsync(long requestId, ApprovalWorkflow? workflow, User applicant)
+    {
+        if (workflow == null || !workflow.Steps.Any())
+        {
+            var adminUsers = await _userRepo.GetAllAsync();
+            var admin = adminUsers.FirstOrDefault(u => u.Role == "Admin");
+            var instance = new ApprovalStepInstance
+            {
+                FormRequestId = requestId,
+                StepOrder = 1,
+                ApproverType = "Role",
+                ApproverTarget = "Admin",
+                AssignedUserId = admin?.Id,
+                Status = "Pending"
+            };
+            await _workflowRepo.CreateStepInstanceAsync(instance);
+            return;
+        }
+
+        int order = 1;
+        foreach (var step in workflow.Steps.OrderBy(s => s.StepOrder))
+        {
+            var instance = new ApprovalStepInstance
+            {
+                FormRequestId = requestId,
+                StepOrder = order,
+                ApproverType = step.ApproverType,
+                ApproverTarget = step.ApproverTarget,
+                Status = "Pending"
+            };
+
+            await ResolveApproverAsync(instance, applicant.Id);
+            await _workflowRepo.CreateStepInstanceAsync(instance);
+            order++;
+        }
+    }
+
+    private async Task ResolveApproverAsync(ApprovalStepInstance instance, long applicantId)
+    {
+        var applicant = await _userRepo.GetByIdAsync(applicantId);
+
+        switch (instance.ApproverType)
+        {
+            case "ApplicantDepartmentManager":
+                if (applicant?.Department != null)
+                {
+                    var mgr = await _userRepo.GetDepartmentManagerAsync(applicant.Department);
+                    instance.AssignedUserId = mgr?.Id;
+                }
+                break;
+
+            case "SpecificDepartmentManager":
+                if (instance.ApproverTarget != null)
+                {
+                    var mgr = await _userRepo.GetDepartmentManagerAsync(instance.ApproverTarget);
+                    instance.AssignedUserId = mgr?.Id;
+                }
+                break;
+
+            case "SpecificUser":
+                if (instance.ApproverTarget != null)
+                {
+                    var users = await _userRepo.GetAllAsync();
+                    var user = users.FirstOrDefault(u => u.DisplayName == instance.ApproverTarget);
+                    instance.AssignedUserId = user?.Id;
+                }
+                break;
+
+            case "Role":
+                if (instance.ApproverTarget == "Admin")
+                {
+                    var users = await _userRepo.GetAllAsync();
+                    var admin = users.FirstOrDefault(u => u.Role == "Admin");
+                    instance.AssignedUserId = admin?.Id;
+                }
+                else if (instance.ApproverTarget == "Manager")
+                {
+                    if (applicant?.Department != null)
+                    {
+                        var mgr = await _userRepo.GetDepartmentManagerAsync(applicant.Department);
+                        instance.AssignedUserId = mgr?.Id;
+                    }
+                }
+                break;
+        }
+    }
+
+    private async Task NotifyNextApproverAsync(long requestId, string formName)
+    {
+        var currentStep = await _workflowRepo.GetCurrentStepInstanceAsync(requestId);
+        if (currentStep?.AssignedUserId.HasValue == true)
+        {
+            await NotifySpecificUserAsync(currentStep.AssignedUserId.Value, "待簽核通知",
+                $"有一筆新的「{formName}」待您簽核。");
+        }
+        else
+        {
+            await _notifService.NotifyManagersAsync("待簽核通知",
+                $"有一筆新的「{formName}」待簽核。");
+        }
+    }
+
+    private async Task NotifySpecificUserAsync(long userId, string subject, string content)
+    {
+        var user = await _userRepo.GetByIdAsync(userId);
+        if (user != null && !string.IsNullOrEmpty(user.Email))
+        {
+            await _notifService.NotifyUserAsync(userId, subject, content);
+        }
     }
 
     private string GenerateRequestNo(string formName)

@@ -9,6 +9,7 @@ public class User
     public string Email { get; set; } = string.Empty;
     public string? LineUserId { get; set; }
     public string Role { get; set; } = "User";
+    public string? Department { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

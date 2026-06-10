@@ -3,6 +3,8 @@
     ViewData["Title"] = "申請明細";
     var isApprover = User.IsInRole("Manager") || User.IsInRole("Admin");
     var isOwner = Model.Request.ApplicantId.ToString() == User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    var currentUserId = long.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "0");
+    var canApprove = isApprover && Model.Request.Status == "Pending" && Model.StepInstances.Any(s => s.Status == "Pending" && s.AssignedUserId == currentUserId);
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -49,6 +51,24 @@
                 </div>
             </div>
         </div>
+
+        @if (Model.Dependencies.Any())
+        {
+            <div class="card mb-3 border-info">
+                <div class="card-header bg-info text-white">
+                    <i class="bi bi-link-45deg"></i> 關聯表單
+                </div>
+                <div class="card-body">
+                    @foreach (var dep in Model.Dependencies)
+                    {
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="bi bi-file-earmark-check text-success"></i>
+                            <span>前置單據：<a asp-action="Detail" asp-route-id="@dep.RequiredRequestId"><code>@dep.RequiredRequestNo</code></a> (@dep.RequiredFormName)</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
 
         <div class="card mb-3">
             <div class="card-header">
@@ -113,7 +133,7 @@
             </div>
         }
 
-        @if (isApprover && Model.Request.Status == "Pending")
+        @if (canApprove)
         {
             <div class="card mb-3 border-success">
                 <div class="card-header bg-success text-white">
@@ -138,9 +158,64 @@
                 </div>
             </div>
         }
+        else if (isApprover && Model.Request.Status == "Pending" && !Model.StepInstances.Any(s => s.AssignedUserId == currentUserId && s.Status == "Pending"))
+        {
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i> 此申請單目前不在您的簽核步驟中
+            </div>
+        }
     </div>
 
     <div class="col-md-4">
+        @if (Model.StepInstances.Any())
+        {
+            <div class="card mb-3">
+                <div class="card-header">
+                    <i class="bi bi-signpost-split"></i> 簽核流程
+                </div>
+                <div class="card-body p-0">
+                    <div class="list-group list-group-flush">
+                        @foreach (var step in Model.StepInstances.OrderBy(s => s.StepOrder))
+                        {
+                            var isCurrentStep = step.Status == "Pending";
+                            var isCompleted = step.Status == "Approved";
+                            var isRejected = step.Status == "Rejected";
+                            var icon = isCompleted ? "bi-check-circle-fill text-success" :
+                                       isRejected ? "bi-x-circle-fill text-danger" :
+                                       isCurrentStep ? "bi-hourglass-split text-warning" : "bi-circle text-muted";
+                            var bgClass = isCurrentStep ? "bg-warning bg-opacity-10" : "";
+
+                            <div class="list-group-item @bgClass">
+                                <div class="d-flex align-items-center">
+                                    <i class="bi @icon me-2 fs-5"></i>
+                                    <div class="flex-grow-1">
+                                        <div class="d-flex justify-content-between">
+                                            <strong>第 @step.StepOrder 步：@step.ApproverLabel</strong>
+                                            <span class="badge @(isCompleted ? "bg-success" : isRejected ? "bg-danger" : "bg-warning text-dark")">
+                                                @(isCompleted ? "已核准" : isRejected ? "已退回" : "待簽核")
+                                            </span>
+                                        </div>
+                                        @if (step.AssignedUserName != null)
+                                        {
+                                            <div class="text-muted small">簽核者：@step.AssignedUserName</div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(step.Comment))
+                                        {
+                                            <div class="mt-1 p-1 bg-light rounded small">@step.Comment</div>
+                                        }
+                                        @if (step.ApprovedAt.HasValue)
+                                        {
+                                            <div class="text-muted small">@step.ApprovedAt.Value.ToString("yyyy-MM-dd HH:mm")</div>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+
         <div class="card">
             <div class="card-header">
                 <i class="bi bi-clock-history"></i> 審核紀錄

@@ -28,6 +28,7 @@ builder.Services.AddScoped<IFormTemplateRepository, FormTemplateRepository>();
 builder.Services.AddScoped<IFormRequestRepository, FormRequestRepository>();
 builder.Services.AddScoped<IApprovalRepository, ApprovalRepository>();
 builder.Services.AddScoped<INotificationLogRepository, NotificationLogRepository>();
+builder.Services.AddScoped<IApprovalWorkflowRepository, ApprovalWorkflowRepository>();
 builder.Services.AddScoped<ExcelTemplateParser>();
 builder.Services.AddScoped<IFormRequestService, FormRequestService>();
 builder.Services.AddScoped<ExcelExportService>();

@@ -1,0 +1,211 @@
+@model SheetFlow.ViewModels.WorkflowEditViewModel
+@{ ViewData["Title"] = (Model.Workflow.Id > 0 ? "編輯" : "新增") + "簽呈流程"; }
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4><i class="bi bi-diagram-3"></i> @(Model.Workflow.Id > 0 ? "編輯" : "新增")簽呈流程</h4>
+    <a asp-action="Index" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> 返回列表
+    </a>
+</div>
+
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger">@TempData["Error"]</div>
+}
+
+<div class="row g-3">
+    <div class="col-md-5">
+        <div class="card">
+            <div class="card-header"><i class="bi bi-gear"></i> 基本設定</div>
+            <div class="card-body">
+                <form asp-action="Save" method="post">
+                    @if (Model.Workflow.Id > 0)
+                    {
+                        <input type="hidden" name="id" value="@Model.Workflow.Id" />
+                    }
+                    <div class="mb-3">
+                        <label class="form-label">簽呈名稱 <span class="text-danger">*</span></label>
+                        <input type="text" name="name" class="form-control" value="@Model.Workflow.Name" required
+                               placeholder="例如：企劃部需求申請簽呈" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">適用表單 <span class="text-danger">*</span></label>
+                        <select name="formTemplateId" class="form-select" required>
+                            <option value="">-- 請選擇 --</option>
+                            @foreach (var t in Model.Templates)
+                            {
+                                <option value="@t.Id" selected="@(Model.Workflow.FormTemplateId == t.Id)">@t.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">適用部門</label>
+                        <select name="department" class="form-select">
+                            <option value="">全部部門</option>
+                            @foreach (var d in Model.Departments)
+                            {
+                                <option value="@d" selected="@(Model.Workflow.Department == d)">@d</option>
+                            }
+                        </select>
+                        <div class="form-text">留空表示適用於所有部門</div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save"></i> 儲存基本設定
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        @if (Model.Workflow.Id > 0)
+        {
+            <div class="card mt-3">
+                <div class="card-header"><i class="bi bi-link-45deg"></i> 前置表單依賴</div>
+                <div class="card-body">
+                    <p class="text-muted small">設定此表單需要依賴哪個已審核完成的表單</p>
+                    <a asp-action="Dependencies" asp-controller="Workflow" asp-route-templateId="@Model.Workflow.FormTemplateId"
+                       class="btn btn-outline-primary btn-sm">
+                        <i class="bi bi-pencil"></i> 管理依賴
+                    </a>
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="col-md-7">
+        @if (Model.Workflow.Id > 0)
+        {
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-list-ol"></i> 簽核步驟（拖曳排序）</span>
+                    <span class="badge bg-primary">@Model.Workflow.Steps.Count 個步驟</span>
+                </div>
+                <div class="card-body">
+                    <div id="stepsList" class="list-group">
+                        @foreach (var step in Model.Workflow.Steps.OrderBy(s => s.StepOrder))
+                        {
+                            <div class="list-group-item list-group-item-action d-flex align-items-center gap-2 mb-2 border rounded"
+                                 data-step-id="@step.Id" style="cursor: grab;">
+                                <i class="bi bi-grip-vertical text-muted fs-5"></i>
+                                <span class="badge bg-primary me-2">@step.StepOrder</span>
+                                <span class="flex-grow-1"><strong>@step.ApproverLabel</strong></span>
+                                <span class="badge bg-secondary me-2">@step.ApproverType</span>
+                                <form asp-action="DeleteStep" method="post" class="d-inline">
+                                    <input type="hidden" name="workflowId" value="@Model.Workflow.Id" />
+                                    <input type="hidden" name="stepId" value="@step.Id" />
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="刪除此步驟">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        }
+                        @if (!Model.Workflow.Steps.Any())
+                        {
+                            <div class="text-center text-muted py-4">
+                                <i class="bi bi-inbox fs-1"></i>
+                                <p class="mt-2">尚未新增簽核步驟，請在下方新增</p>
+                            </div>
+                        }
+                    </div>
+
+                    <hr />
+                    <h6 class="mb-3"><i class="bi bi-plus-circle"></i> 新增簽核步驟</h6>
+                    <form asp-action="AddStep" method="post" class="row g-2 align-items-end">
+                        <input type="hidden" name="workflowId" value="@Model.Workflow.Id" />
+                        <div class="col-md-4">
+                            <label class="form-label">簽核者類型</label>
+                            <select name="approverType" id="approverType" class="form-select" required onchange="updateTargetOptions()">
+                                <option value="">-- 請選擇 --</option>
+                                <option value="ApplicantDepartmentManager">申請人部門主管</option>
+                                <option value="SpecificDepartmentManager">指定部門主管</option>
+                                <option value="SpecificUser">指定人員</option>
+                                <option value="Role">指定角色</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4" id="targetContainer" style="display:none;">
+                            <label class="form-label" id="targetLabel">目標</label>
+                            <div id="targetInput"></div>
+                        </div>
+                        <div class="col-md-4">
+                            <button type="submit" class="btn btn-success w-100">
+                                <i class="bi bi-plus-lg"></i> 新增步驟
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="card">
+                <div class="card-body text-center text-muted py-5">
+                    <i class="bi bi-arrow-up fs-1"></i>
+                    <p class="mt-2">請先儲存基本設定，再新增簽核步驟</p>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+<script>
+    const departments = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Departments));
+    const users = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Users.Select(u => new { id = u.Id, name = u.DisplayName, dept = u.Department })));
+
+    function updateTargetOptions() {
+        const type = document.getElementById('approverType').value;
+        const container = document.getElementById('targetContainer');
+        const targetDiv = document.getElementById('targetInput');
+        const label = document.getElementById('targetLabel');
+
+        container.style.display = 'none';
+        targetDiv.innerHTML = '';
+
+        if (type === 'SpecificDepartmentManager') {
+            container.style.display = 'block';
+            label.textContent = '選擇部門';
+            let html = '<select name="approverTarget" class="form-select" required><option value="">-- 請選擇 --</option>';
+            departments.forEach(d => { html += `<option value="${d}">${d}</option>`; });
+            html += '</select>';
+            targetDiv.innerHTML = html;
+        } else if (type === 'SpecificUser') {
+            container.style.display = 'block';
+            label.textContent = '選擇人員';
+            let html = '<select name="approverTarget" class="form-select" required><option value="">-- 請選擇 --</option>';
+            users.forEach(u => { html += `<option value="${u.name}">${u.name}${u.dept ? ' (' + u.dept + ')' : ''}</option>`; });
+            html += '</select>';
+            targetDiv.innerHTML = html;
+        } else if (type === 'Role') {
+            container.style.display = 'block';
+            label.textContent = '選擇角色';
+            targetDiv.innerHTML = '<select name="approverTarget" class="form-select" required>' +
+                '<option value="">-- 請選擇 --</option>' +
+                '<option value="Admin">系統管理員</option>' +
+                '<option value="Manager">主管</option>' +
+                '</select>';
+        }
+    }
+
+    @if (Model.Workflow.Id > 0)
+    {
+        <text>
+        new Sortable(document.getElementById('stepsList'), {
+            animation: 150,
+            handle: '.bi-grip-vertical',
+            onEnd: function() {
+                const items = [];
+                document.querySelectorAll('#stepsList [data-step-id]').forEach((el, index) => {
+                    items.push({ id: parseInt(el.dataset.stepId), order: index + 1 });
+                });
+                fetch('@Url.Action("ReorderSteps", "Workflow")?workflowId=@Model.Workflow.Id', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(items)
+                });
+                document.querySelectorAll('#stepsList .badge.bg-primary').forEach((badge, index) => {
+                    badge.textContent = index + 1;
+                });
+            }
+        });
+        </text>
+    }
+</script>

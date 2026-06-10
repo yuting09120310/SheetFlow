@@ -1,0 +1,83 @@
+@{
+    var template = ViewBag.Template as SheetFlow.Models.FormTemplate;
+    var allTemplates = ViewBag.AllTemplates as List<SheetFlow.Models.FormTemplate>;
+    var dependencies = ViewBag.Dependencies as List<SheetFlow.Models.FormTemplateDependency>;
+    ViewData["Title"] = "前置表單依賴 - " + template?.Name;
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4><i class="bi bi-link-45deg"></i> 前置表單依賴 - @template?.Name</h4>
+    <a asp-action="Edit" asp-route-id="@(dependencies?.FirstOrDefault()?.Id ?? 0)" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> 返回簽呈設定
+    </a>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><i class="bi bi-plus-circle"></i> 新增前置表單</div>
+            <div class="card-body">
+                <p class="text-muted small">設定此表單提交前，需要先有哪個表單審核完成</p>
+                <form asp-action="AddDependency" method="post" class="row g-2">
+                    <input type="hidden" name="templateId" value="@template?.Id" />
+                    <div class="col-md-8">
+                        <select name="requiredTemplateId" class="form-select" required>
+                            <option value="">-- 選擇前置表單 --</option>
+                            @foreach (var t in allTemplates ?? new List<SheetFlow.Models.FormTemplate>())
+                            {
+                                <option value="@t.Id">@t.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-plus-lg"></i> 新增
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><i class="bi bi-list-check"></i> 目前依賴</div>
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>前置表單</th>
+                            <th>需為狀態</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (dependencies != null && dependencies.Any())
+                        {
+                            @foreach (var dep in dependencies)
+                            {
+                                <tr>
+                                    <td><strong>@dep.RequiredTemplateName</strong></td>
+                                    <td><span class="badge bg-success">@dep.RequiredStatus</span></td>
+                                    <td>
+                                        <form asp-action="DeleteDependency" method="post" class="d-inline">
+                                            <input type="hidden" name="templateId" value="@template?.Id" />
+                                            <input type="hidden" name="id" value="@dep.Id" />
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                        else
+                        {
+                            <tr><td colspan="3" class="text-center text-muted py-3">無前置表單依賴</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>

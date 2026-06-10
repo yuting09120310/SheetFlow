@@ -9,13 +9,16 @@ namespace SheetFlow.Controllers;
 [Authorize(Roles = "Manager,Admin")]
 public class ApprovalsController : Controller
 {
+    private readonly IApprovalWorkflowRepository _workflowRepo;
     private readonly IFormRequestRepository _requestRepo;
     private readonly IFormRequestService _requestService;
 
     public ApprovalsController(
+        IApprovalWorkflowRepository workflowRepo,
         IFormRequestRepository requestRepo,
         IFormRequestService requestService)
     {
+        _workflowRepo = workflowRepo;
         _requestRepo = requestRepo;
         _requestService = requestService;
     }
@@ -23,7 +26,19 @@ public class ApprovalsController : Controller
     [HttpGet]
     public async Task<IActionResult> Index()
     {
-        var requests = await _requestRepo.GetPendingAsync();
+        var userId = long.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
+        var pendingSteps = await _workflowRepo.GetPendingStepsByUserAsync(userId);
+        var stepList = pendingSteps.ToList();
+
+        var requestIds = stepList.Select(s => s.FormRequestId).Distinct();
+        var requests = new List<SheetFlow.Models.FormRequest>();
+        foreach (var rid in requestIds)
+        {
+            var req = await _requestRepo.GetByIdAsync(rid);
+            if (req != null) requests.Add(req);
+        }
+
+        ViewBag.StepMap = stepList.ToDictionary(s => s.FormRequestId, s => s);
         return View(requests);
     }
 

@@ -1,13 +1,13 @@
 -- SheetFlow Database Initialization Script
 -- Run this script against your SQL Server to create the database and tables
 
-IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'StoreFlow')
+IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'SheetFlow')
 BEGIN
-    CREATE DATABASE [StoreFlow];
+    CREATE DATABASE [SheetFlow];
 END
 GO
 
-USE [StoreFlow];
+USE [SheetFlow];
 GO
 
 -- Users table

@@ -11,6 +11,7 @@
                     <th>申請單號</th>
                     <th>表單名稱</th>
                     <th>申請人</th>
+                    <th>目前步驟</th>
                     <th>狀態</th>
                     <th>送出時間</th>
                     <th></th>
@@ -19,10 +20,26 @@
             <tbody>
                 @foreach (var r in Model)
                 {
+                    var stepMap = ViewBag.StepMap as Dictionary<long, SheetFlow.Models.ApprovalStepInstance>;
+                    var currentStep = stepMap?.ContainsKey(r.Id) == true ? stepMap[r.Id] : null;
+                    var totalSteps = r.Status == "Approved" ? 0 : 0;
+
                     <tr>
                         <td><code>@r.RequestNo</code></td>
                         <td>@r.FormName</td>
                         <td>@r.ApplicantName</td>
+                        <td>
+                            @if (currentStep != null)
+                            {
+                                <span class="badge bg-warning text-dark">
+                                    第 @currentStep.StepOrder 步：@currentStep.ApproverLabel
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="text-muted">-</span>
+                            }
+                        </td>
                         <td>@await Html.PartialAsync("_StatusBadge", r.Status)</td>
                         <td class="text-muted">@r.SubmittedAt?.ToString("yyyy-MM-dd HH:mm")</td>
                         <td>
@@ -35,7 +52,7 @@
                 }
                 @if (!Model.Any())
                 {
-                    <tr><td colspan="6" class="text-center text-muted py-4">暫無待審核申請</td></tr>
+                    <tr><td colspan="7" class="text-center text-muted py-4">暫無待審核申請</td></tr>
                 }
             </tbody>
         </table>

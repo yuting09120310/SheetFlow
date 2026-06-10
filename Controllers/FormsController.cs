@@ -11,13 +11,16 @@ public class FormsController : Controller
 {
     private readonly IFormTemplateRepository _templateRepo;
     private readonly IFormRequestService _requestService;
+    private readonly IApprovalWorkflowRepository _workflowRepo;
 
     public FormsController(
         IFormTemplateRepository templateRepo,
-        IFormRequestService requestService)
+        IFormRequestService requestService,
+        IApprovalWorkflowRepository workflowRepo)
     {
         _templateRepo = templateRepo;
         _requestService = requestService;
+        _workflowRepo = workflowRepo;
     }
 
     [HttpGet]
@@ -53,11 +56,22 @@ public class FormsController : Controller
             }).ToList()
         };
 
+        var userId = long.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
+        var dependencies = await _workflowRepo.GetDependenciesByTemplateAsync(id);
+        var depList = dependencies.ToList();
+        if (depList.Any())
+        {
+            var dep = depList.First();
+            var approvedRequests = await _workflowRepo.GetApprovedRequestsByUserAndTemplateAsync(userId, dep.RequiredTemplateId);
+            vm.AvailablePrerequisiteRequests = approvedRequests.ToList();
+            vm.PrerequisiteTemplateName = dep.RequiredTemplateName;
+        }
+
         return View(vm);
     }
 
     [HttpPost]
-    public async Task<IActionResult> Submit(long id, IFormCollection form)
+    public async Task<IActionResult> Submit(long id, IFormCollection form, long? prerequisiteRequestId)
     {
         var userId = long.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
         var formValues = new Dictionary<string, string>();
@@ -71,7 +85,7 @@ public class FormsController : Controller
 
         try
         {
-            var requestId = await _requestService.SubmitRequestAsync(id, userId, formValues);
+            var requestId = await _requestService.SubmitRequestAsync(id, userId, formValues, prerequisiteRequestId);
             TempData["Success"] = "申請已送出。";
             return RedirectToAction("Detail", "Requests", new { id = requestId });
         }
@@ -96,6 +110,17 @@ public class FormsController : Controller
                     Value = formValues.GetValueOrDefault($"field_{f.Id}")
                 }).ToList()
             };
+
+            var dependencies = await _workflowRepo.GetDependenciesByTemplateAsync(id);
+            var depList = dependencies.ToList();
+            if (depList.Any())
+            {
+                var dep = depList.First();
+                var approvedRequests = await _workflowRepo.GetApprovedRequestsByUserAndTemplateAsync(userId, dep.RequiredTemplateId);
+                vm.AvailablePrerequisiteRequests = approvedRequests.ToList();
+                vm.PrerequisiteTemplateName = dep.RequiredTemplateName;
+            }
+
             return View(vm);
         }
     }

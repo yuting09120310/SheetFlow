@@ -5,7 +5,7 @@ namespace SheetFlow.Services;
 
 public interface IFormRequestService
 {
-    Task<long> SubmitRequestAsync(long templateId, long applicantId, Dictionary<string, string> formValues);
+    Task<long> SubmitRequestAsync(long templateId, long applicantId, Dictionary<string, string> formValues, long? prerequisiteRequestId = null);
     Task ResubmitRequestAsync(long requestId, long applicantId, Dictionary<string, string> formValues);
     Task ApproveRequestAsync(long requestId, long approverId, string? comment);
     Task RejectRequestAsync(long requestId, long approverId, string comment);
