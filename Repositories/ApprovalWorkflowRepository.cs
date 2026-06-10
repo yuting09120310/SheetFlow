@@ -47,8 +47,11 @@ public class ApprovalWorkflowRepository : IApprovalWorkflowRepository
                     FROM [approval_workflows] w
                     LEFT JOIN [form_templates] t ON w.[form_template_id] = t.[id]
                     WHERE w.[form_template_id] = @TemplateId AND w.[is_active] = 1
-                    AND ((w.[department] = @Department) OR (w.[department] IS NULL AND @Department IS NULL))
-                    ORDER BY CASE WHEN w.[department] IS NULL THEN 1 ELSE 0 END
+                    AND (w.[department] = @Department OR w.[department] IS NULL)
+                    ORDER BY CASE WHEN w.[department] = @Department THEN 0
+                                  WHEN w.[department] IS NULL AND @Department IS NULL THEN 0
+                                  WHEN w.[department] IS NULL THEN 1
+                                  ELSE 2 END
                     OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY";
         var workflow = await conn.QueryFirstOrDefaultAsync<ApprovalWorkflow>(sql, new { TemplateId = templateId, Department = (object?)department ?? DBNull.Value });
         if (workflow != null)

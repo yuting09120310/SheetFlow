@@ -133,6 +133,9 @@ public class FormRequestService : IFormRequestService
             await _requestRepo.CreateValueAsync(rv);
         }
 
+        var applicant = await _userRepo.GetByIdAsync(request.ApplicantId)
+            ?? throw new Exception("申請人不存在");
+
         var stepInstances = await _workflowRepo.GetStepInstancesByRequestAsync(requestId);
         var stepList = stepInstances.ToList();
         if (stepList.Any())
@@ -148,7 +151,7 @@ public class FormRequestService : IFormRequestService
             }
 
             var firstStep = stepList.OrderBy(s => s.StepOrder).First();
-            await ResolveApproverAsync(firstStep, request.ApplicantId);
+            firstStep.AssignedUserId = await ResolveApproverAsync(firstStep.ApproverType, firstStep.ApproverTarget, applicant);
             await _workflowRepo.UpdateStepInstanceAsync(firstStep);
         }
 
@@ -208,11 +211,15 @@ public class FormRequestService : IFormRequestService
         var nextStep = await _workflowRepo.GetCurrentStepInstanceAsync(requestId);
         if (nextStep != null)
         {
-            await ResolveApproverAsync(nextStep, request.ApplicantId);
+            var applicant = await _userRepo.GetByIdAsync(request.ApplicantId);
+            nextStep.AssignedUserId = await ResolveApproverAsync(nextStep.ApproverType, nextStep.ApproverTarget, applicant!);
             await _workflowRepo.UpdateStepInstanceAsync(nextStep);
-            var template = await _templateRepo.GetByIdAsync(request.FormTemplateId);
-            await NotifySpecificUserAsync(nextStep.AssignedUserId!.Value, "待簽核通知",
-                $"申請單 {request.RequestNo} 已輪到您簽核。");
+            if (nextStep.AssignedUserId.HasValue)
+            {
+                var template = await _templateRepo.GetByIdAsync(request.FormTemplateId);
+                await NotifySpecificUserAsync(nextStep.AssignedUserId.Value, "待簽核通知",
+                    $"申請單 {request.RequestNo} 已輪到您簽核。");
+            }
         }
         else
         {
@@ -311,8 +318,18 @@ public class FormRequestService : IFormRequestService
             return;
         }
 
-        int order = 1;
+        var resolvedSteps = new List<(ApprovalWorkflowStep Step, long? AssignedUserId)>();
+
         foreach (var step in workflow.Steps.OrderBy(s => s.StepOrder))
+        {
+            var assignedUserId = await ResolveApproverAsync(step.ApproverType, step.ApproverTarget, applicant);
+            resolvedSteps.Add((step, assignedUserId));
+        }
+
+        var dedupedSteps = RemoveDuplicateConsecutiveApprover(resolvedSteps);
+
+        int order = 1;
+        foreach (var (step, assignedUserId) in dedupedSteps)
         {
             var instance = new ApprovalStepInstance
             {
@@ -320,63 +337,87 @@ public class FormRequestService : IFormRequestService
                 StepOrder = order,
                 ApproverType = step.ApproverType,
                 ApproverTarget = step.ApproverTarget,
+                AssignedUserId = assignedUserId,
                 Status = "Pending"
             };
-
-            await ResolveApproverAsync(instance, applicant.Id);
             await _workflowRepo.CreateStepInstanceAsync(instance);
             order++;
         }
     }
 
-    private async Task ResolveApproverAsync(ApprovalStepInstance instance, long applicantId)
+    private List<(ApprovalWorkflowStep Step, long? AssignedUserId)> RemoveDuplicateConsecutiveApprover(
+        List<(ApprovalWorkflowStep Step, long? AssignedUserId)> steps)
     {
-        var applicant = await _userRepo.GetByIdAsync(applicantId);
+        var result = new List<(ApprovalWorkflowStep Step, long? AssignedUserId)>();
+        long? lastUserId = null;
 
-        switch (instance.ApproverType)
+        foreach (var (step, userId) in steps)
+        {
+            if (userId != null && userId == lastUserId)
+                continue;
+
+            result.Add((step, userId));
+            lastUserId = userId;
+        }
+
+        return result;
+    }
+
+    private async Task<long?> ResolveApproverAsync(string approverType, string? approverTarget, User applicant)
+    {
+        switch (approverType)
         {
             case "ApplicantDepartmentManager":
-                if (applicant?.Department != null)
+                if (!string.IsNullOrEmpty(applicant.Department))
                 {
                     var mgr = await _userRepo.GetDepartmentManagerAsync(applicant.Department);
-                    instance.AssignedUserId = mgr?.Id;
+                    if (mgr != null)
+                        return mgr.Id;
                 }
-                break;
+                var allUsers1 = await _userRepo.GetAllAsync();
+                return allUsers1.FirstOrDefault(u => u.Role == "Admin")?.Id;
 
             case "SpecificDepartmentManager":
-                if (instance.ApproverTarget != null)
+                if (!string.IsNullOrEmpty(approverTarget))
                 {
-                    var mgr = await _userRepo.GetDepartmentManagerAsync(instance.ApproverTarget);
-                    instance.AssignedUserId = mgr?.Id;
+                    var mgr = await _userRepo.GetDepartmentManagerAsync(approverTarget);
+                    if (mgr != null)
+                        return mgr.Id;
                 }
-                break;
+                var allUsers2 = await _userRepo.GetAllAsync();
+                return allUsers2.FirstOrDefault(u => u.Role == "Admin")?.Id;
 
             case "SpecificUser":
-                if (instance.ApproverTarget != null)
+                if (!string.IsNullOrEmpty(approverTarget))
                 {
                     var users = await _userRepo.GetAllAsync();
-                    var user = users.FirstOrDefault(u => u.DisplayName == instance.ApproverTarget);
-                    instance.AssignedUserId = user?.Id;
+                    var user = users.FirstOrDefault(u => u.DisplayName == approverTarget);
+                    if (user != null)
+                        return user.Id;
                 }
-                break;
+                var allUsers3 = await _userRepo.GetAllAsync();
+                return allUsers3.FirstOrDefault(u => u.Role == "Admin")?.Id;
 
             case "Role":
-                if (instance.ApproverTarget == "Admin")
+                if (approverTarget == "Admin")
                 {
                     var users = await _userRepo.GetAllAsync();
-                    var admin = users.FirstOrDefault(u => u.Role == "Admin");
-                    instance.AssignedUserId = admin?.Id;
+                    return users.FirstOrDefault(u => u.Role == "Admin")?.Id;
                 }
-                else if (instance.ApproverTarget == "Manager")
+                else if (approverTarget == "Manager")
                 {
-                    if (applicant?.Department != null)
+                    if (!string.IsNullOrEmpty(applicant.Department))
                     {
                         var mgr = await _userRepo.GetDepartmentManagerAsync(applicant.Department);
-                        instance.AssignedUserId = mgr?.Id;
+                        if (mgr != null)
+                            return mgr.Id;
                     }
+                    var allUsers4 = await _userRepo.GetAllAsync();
+                    return allUsers4.FirstOrDefault(u => u.Role == "Admin")?.Id;
                 }
                 break;
         }
+        return null;
     }
 
     private async Task NotifyNextApproverAsync(long requestId, string formName)

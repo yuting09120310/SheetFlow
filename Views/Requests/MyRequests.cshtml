@@ -8,6 +8,7 @@
         <a asp-action="MyRequests" asp-route-status="Pending" class="btn btn-sm btn-outline-warning @(Context.Request.Query["status"].FirstOrDefault() == "Pending" ? "active" : "")">待審核</a>
         <a asp-action="MyRequests" asp-route-status="Approved" class="btn btn-sm btn-outline-success @(Context.Request.Query["status"].FirstOrDefault() == "Approved" ? "active" : "")">已核准</a>
         <a asp-action="MyRequests" asp-route-status="Rejected" class="btn btn-sm btn-outline-danger @(Context.Request.Query["status"].FirstOrDefault() == "Rejected" ? "active" : "")">已退回</a>
+        <a asp-action="MyRequests" asp-route-status="Resubmitted" class="btn btn-sm btn-outline-info @(Context.Request.Query["status"].FirstOrDefault() == "Resubmitted" ? "active" : "")">重新送出</a>
     </div>
 </div>
 

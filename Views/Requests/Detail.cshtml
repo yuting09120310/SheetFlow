@@ -140,21 +140,26 @@
                     <i class="bi bi-check2-square"></i> 審核操作
                 </div>
                 <div class="card-body">
-                    <form asp-controller="Approvals" asp-action="Approve" asp-route-id="@Model.Request.Id" method="post" class="d-inline">
-                        <button type="submit" class="btn btn-success me-2">
-                            <i class="bi bi-check-lg"></i> 核准
-                        </button>
-                    </form>
-
-                    <form asp-controller="Approvals" asp-action="Reject" asp-route-id="@Model.Request.Id" method="post" class="d-inline"
-                          onsubmit="return confirm('確定要退回此申請？')">
-                        <div class="input-group mt-2">
-                            <input type="text" name="comment" class="form-control" placeholder="退回原因" required />
-                            <button type="submit" class="btn btn-danger">
-                                <i class="bi bi-x-lg"></i> 退回
-                            </button>
+                    <div class="row g-2">
+                        <div class="col-auto">
+                            <form asp-controller="Approvals" asp-action="Approve" asp-route-id="@Model.Request.Id" method="post">
+                                <button type="submit" class="btn btn-success">
+                                    <i class="bi bi-check-lg"></i> 核准
+                                </button>
+                            </form>
                         </div>
-                    </form>
+                        <div class="col">
+                            <form asp-controller="Approvals" asp-action="Reject" asp-route-id="@Model.Request.Id" method="post"
+                                  onsubmit="return confirm('確定要退回此申請？')">
+                                <div class="input-group">
+                                    <input type="text" name="comment" class="form-control" placeholder="退回原因" required />
+                                    <button type="submit" class="btn btn-danger">
+                                        <i class="bi bi-x-lg"></i> 退回
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
                 </div>
             </div>
         }

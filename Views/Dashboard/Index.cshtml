@@ -8,30 +8,36 @@
 
 <div class="row g-3 mb-4">
     <div class="col-md-3">
-        <div class="card border-primary">
-            <div class="card-body text-center">
-                <h5 class="card-title text-primary"><i class="bi bi-arrow-return-left"></i> 待處理</h5>
-                <p class="display-6 fw-bold">@Model.MyPendingRequests</p>
+        <a asp-controller="Requests" asp-action="MyRequests" asp-route-status="Rejected" class="text-decoration-none">
+            <div class="card border-primary h-100" style="cursor:pointer;">
+                <div class="card-body text-center">
+                    <h5 class="card-title text-primary"><i class="bi bi-arrow-return-left"></i> 待處理</h5>
+                    <p class="display-6 fw-bold">@Model.MyPendingRequests</p>
+                </div>
             </div>
-        </div>
+        </a>
     </div>
     <div class="col-md-3">
-        <div class="card border-success">
-            <div class="card-body text-center">
-                <h5 class="card-title text-success"><i class="bi bi-file-earmark-text"></i> 我的申請</h5>
-                <p class="display-6 fw-bold">@Model.MyTotalRequests</p>
+        <a asp-controller="Requests" asp-action="MyRequests" class="text-decoration-none">
+            <div class="card border-success h-100" style="cursor:pointer;">
+                <div class="card-body text-center">
+                    <h5 class="card-title text-success"><i class="bi bi-file-earmark-text"></i> 我的申請</h5>
+                    <p class="display-6 fw-bold">@Model.MyTotalRequests</p>
+                </div>
             </div>
-        </div>
+        </a>
     </div>
     @if (User.IsInRole("Manager") || User.IsInRole("Admin"))
     {
         <div class="col-md-3">
-            <div class="card border-warning">
-                <div class="card-body text-center">
-                    <h5 class="card-title text-warning"><i class="bi bi-clock"></i> 待審核</h5>
-                    <p class="display-6 fw-bold">@Model.PendingApprovals</p>
+            <a asp-controller="Approvals" asp-action="Index" class="text-decoration-none">
+                <div class="card border-warning h-100" style="cursor:pointer;">
+                    <div class="card-body text-center">
+                        <h5 class="card-title text-warning"><i class="bi bi-clock"></i> 待審核</h5>
+                        <p class="display-6 fw-bold">@Model.PendingApprovals</p>
+                    </div>
                 </div>
-            </div>
+            </a>
         </div>
     }
 </div>

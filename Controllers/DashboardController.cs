@@ -9,10 +9,12 @@ namespace SheetFlow.Controllers;
 public class DashboardController : Controller
 {
     private readonly IFormRequestRepository _requestRepo;
+    private readonly IApprovalWorkflowRepository _workflowRepo;
 
-    public DashboardController(IFormRequestRepository requestRepo)
+    public DashboardController(IFormRequestRepository requestRepo, IApprovalWorkflowRepository workflowRepo)
     {
         _requestRepo = requestRepo;
+        _workflowRepo = workflowRepo;
     }
 
     public async Task<IActionResult> Index()
@@ -25,15 +27,15 @@ public class DashboardController : Controller
 
         var vm = new DashboardViewModel
         {
-            MyPendingRequests = myRequests.Count(r => r.Status == "Rejected"),
+            MyPendingRequests = myRequests.Count(r => r.Status == "Rejected" || r.Status == "Resubmitted"),
             MyTotalRequests = myRequests.Count,
             RecentRequests = recentRequests
         };
 
         if (role == "Manager" || role == "Admin")
         {
-            var pending = await _requestRepo.GetPendingAsync();
-            vm.PendingApprovals = pending.Count();
+            var pendingSteps = await _workflowRepo.GetPendingStepsByUserAsync(userId);
+            vm.PendingApprovals = pendingSteps.Count();
         }
 
         return View(vm);
