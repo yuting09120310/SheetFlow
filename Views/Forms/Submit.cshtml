@@ -175,6 +175,7 @@
     let connection = null;
     let currentSessionId = null;
     let currentQrCode = null;
+    let mobileSignatureData = null; // Track signature from mobile
 
     async function ensureSession() {
         if (currentSessionId && currentQrCode) {
@@ -211,6 +212,7 @@
         });
 
         const input = document.getElementById(`signature_input_${fieldId}`);
+        mobileSignatureData = null; // Reset mobile signature
         if (input.value) {
             signaturePad.fromDataURL(input.value);
             updateSyncPreview(input.value);
@@ -254,8 +256,19 @@
         connection.on("SignatureUpdated", (imageData) => {
             updateSyncPreview(imageData);
             if (imageData && imageData.startsWith('data:image')) {
+                // Store mobile signature
+                mobileSignatureData = imageData;
+                
+                // Update hidden input
                 const input = document.getElementById(`signature_input_${currentFieldId}`);
                 input.value = imageData;
+                
+                // Draw on local canvas so user can see it
+                if (signaturePad) {
+                    signaturePad.fromDataURL(imageData);
+                }
+                
+                // Update preview box
                 const wrapper = document.querySelector(`.signature-field-wrapper[data-field-id="${currentFieldId}"]`);
                 const previewBox = wrapper.querySelector('.signature-preview-box');
                 previewBox.innerHTML = `<img src="${imageData}" class="signature-img" />`;
@@ -301,18 +314,28 @@
         currentFieldId = null;
         currentSessionId = null;
         currentQrCode = null;
+        mobileSignatureData = null;
     }
 
     function clearSignature() {
         if (signaturePad) signaturePad.clear();
+        mobileSignatureData = null;
+        updateSyncPreview('');
     }
 
     function saveSignature() {
-        if (!signaturePad || signaturePad.isEmpty()) {
+        // Check if there's a signature from either local canvas or mobile
+        const hasLocalSignature = signaturePad && !signaturePad.isEmpty();
+        const hasMobileSignature = mobileSignatureData && mobileSignatureData.startsWith('data:image');
+        
+        if (!hasLocalSignature && !hasMobileSignature) {
             alert('請先簽名');
             return;
         }
-        const dataUrl = signaturePad.toDataURL('image/png');
+        
+        // Use mobile signature if available, otherwise use local canvas
+        const dataUrl = hasMobileSignature ? mobileSignatureData : signaturePad.toDataURL('image/png');
+        
         const input = document.getElementById(`signature_input_${currentFieldId}`);
         input.value = dataUrl;
 

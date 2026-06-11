@@ -1,4 +1,5 @@
 using Dapper;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using SheetFlow.Infrastructure;
 using SheetFlow.Repositories;
@@ -14,10 +15,9 @@ builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.WithOrigins("https://sheetflow.neko-meow.com", "http://localhost:5147")
+        policy.AllowAnyOrigin()
               .AllowAnyHeader()
-              .AllowAnyMethod()
-              .AllowCredentials();
+              .AllowAnyMethod();
     });
 });
 
@@ -52,6 +52,13 @@ if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Dashboard/Error");
 }
+
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+    KnownNetworks = { new Microsoft.AspNetCore.HttpOverrides.IPNetwork(System.Net.IPAddress.Any, 0) },
+    KnownProxies = { System.Net.IPAddress.Any }
+});
 
 app.UseStaticFiles();
 app.UseRouting();
