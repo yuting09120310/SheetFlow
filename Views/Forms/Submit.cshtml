@@ -1,88 +1,109 @@
 @model DynamicFormSubmitViewModel
 @{ ViewData["Title"] = "填寫 - " + Model.FormName; }
 
-<h4><i class="bi bi-pencil-square"></i> @Model.FormName</h4>
+<h4 class="mb-3"><i class="bi bi-pencil-square"></i> @Model.FormName</h4>
 
 @if (Model.AvailablePrerequisiteRequests.Any())
 {
-    <div class="card mb-3 border-warning">
-        <div class="card-header bg-warning">
-            <i class="bi bi-link-45deg"></i> 前置表單（必填）
-        </div>
+    <div class="card mb-3 border-warning bg-warning bg-opacity-10">
         <div class="card-body">
-            <p class="mb-2">此表單需要依賴已審核完成的 <strong>@Model.PrerequisiteTemplateName</strong> 才能提交</p>
-            <label class="form-label">選擇已審核的 @Model.PrerequisiteTemplateName</label>
-            <select name="prerequisiteRequestId" class="form-select" required>
-                <option value="">-- 請選擇 --</option>
-                @foreach (var req in Model.AvailablePrerequisiteRequests)
-                {
-                    <option value="@req.Id">@req.RequestNo - @req.FormName (@req.SubmittedAt?.ToString("yyyy-MM-dd"))</option>
-                }
-            </select>
+            <div class="d-flex align-items-start gap-2">
+                <i class="bi bi-link-45deg text-warning fs-5 mt-1"></i>
+                <div class="flex-grow-1">
+                    <strong class="d-block mb-1">前置表單（必填）</strong>
+                    <p class="mb-2 small text-muted">此表單需要依賴已審核完成的 <strong>@Model.PrerequisiteTemplateName</strong> 才能提交</p>
+                    <select name="prerequisiteRequestId" class="form-select form-select-sm" required style="max-width: 400px;">
+                        <option value="">-- 請選擇已審核單據 --</option>
+                        @foreach (var req in Model.AvailablePrerequisiteRequests)
+                        {
+                            <option value="@req.Id">@req.RequestNo - @req.FormName (@req.SubmittedAt?.ToString("yyyy-MM-dd"))</option>
+                        }
+                    </select>
+                </div>
+            </div>
         </div>
     </div>
 }
 
-<form asp-action="Submit" asp-route-id="@Model.FormTemplateId" method="post">
-    <div class="card">
-        <div class="card-body">
-            @for (int i = 0; i < Model.Fields.Count; i++)
-            {
-                var field = Model.Fields[i];
-                <div class="mb-3">
-                    <label class="form-label">
-                        @field.FieldName
-                        @if (field.IsRequired)
-                        {
-                            <span class="text-danger">*</span>
-                        }
-                    </label>
+<div class="card mb-3 border-primary bg-primary bg-opacity-10">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-center">
+            <div class="col-auto"><i class="bi bi-person-badge text-primary"></i></div>
+            <div class="col-auto"><strong>申請人：</strong>@Model.ApplicantName</div>
+            <div class="col-auto text-muted">|</div>
+            <div class="col-auto"><strong>部門：</strong>@Model.ApplicantDepartment</div>
+        </div>
+    </div>
+</div>
 
-                    @switch (field.FieldType)
-                    {
-                        case "Textarea":
-                            <textarea name="field_@field.FieldId" class="form-control" rows="3"
-                                      @(field.IsRequired ? "required" : "")>@field.Value</textarea>
-                            break;
-                        case "Number":
-                            <input type="number" name="field_@field.FieldId" class="form-control"
-                                   value="@field.Value" @(field.IsRequired ? "required" : "") step="any" />
-                            break;
-                        case "Date":
-                            <input type="date" name="field_@field.FieldId" class="form-control"
-                                   value="@field.Value" @(field.IsRequired ? "required" : "") />
-                            break;
-                        case "Select":
-                            var options = (field.OptionsJson ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                            <select name="field_@field.FieldId" class="form-select" @(field.IsRequired ? "required" : "")>
-                                <option value="">-- 請選擇 --</option>
-                                @foreach (var opt in options)
-                                {
-                                    <option value="@opt" selected="@(field.Value == opt)">@opt</option>
-                                }
-                            </select>
-                            break;
-                        default:
-                            <input type="text" name="field_@field.FieldId" class="form-control"
-                                   value="@field.Value" @(field.IsRequired ? "required" : "") />
-                            break;
-                    }
-                </div>
-            }
+<form asp-action="Submit" asp-route-id="@Model.FormTemplateId" method="post">
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <div class="row g-3">
+                @for (int i = 0; i < Model.Fields.Count; i++)
+                {
+                    var field = Model.Fields[i];
+                    var skipField = field.FieldKey == "applicant" || field.FieldKey == "department";
+                    if (skipField) continue;
+
+                    var isFullWidth = field.FieldType == "Textarea" || field.FieldKey == "description" || field.FieldKey == "reason" || field.FieldKey == "remarks" || field.FieldKey == "specification";
+                    var colClass = isFullWidth ? "col-12" : "col-md-6 col-lg-4";
+
+                    <div class="@colClass">
+                        <label class="form-label fw-semibold small mb-1">
+                            @field.FieldName
+                            @if (field.IsRequired) { <span class="text-danger">*</span> }
+                        </label>
+
+                        @switch (field.FieldType)
+                        {
+                            case "Textarea":
+                                <textarea name="field_@field.FieldId" class="form-control form-control-sm" rows="3"
+                                          @(field.IsRequired ? "required" : "")>@field.Value</textarea>
+                                break;
+                            case "Number":
+                                <input type="number" name="field_@field.FieldId" class="form-control form-control-sm"
+                                       value="@field.Value" @(field.IsRequired ? "required" : "") step="any" />
+                                break;
+                            case "Date":
+                                <input type="date" name="field_@field.FieldId" class="form-control form-control-sm"
+                                       value="@(string.IsNullOrEmpty(field.Value) ? DateTime.Now.ToString("yyyy-MM-dd") : field.Value)" 
+                                       @(field.IsRequired ? "required" : "") />
+                                break;
+                            case "Select":
+                                var options = (field.OptionsJson ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                                <select name="field_@field.FieldId" class="form-select form-select-sm" @(field.IsRequired ? "required" : "")>
+                                    <option value="">-- 請選擇 --</option>
+                                    @foreach (var opt in options)
+                                    {
+                                        <option value="@opt" selected="@(field.Value == opt)">@opt</option>
+                                    }
+                                </select>
+                                break;
+                            default:
+                                <input type="text" name="field_@field.FieldId" class="form-control form-control-sm"
+                                       value="@field.Value" @(field.IsRequired ? "required" : "") />
+                                break;
+                        }
+                    </div>
+                }
+            </div>
         </div>
     </div>
 
-    <div class="mt-4 mb-5 pb-3">
-        <button type="submit" class="btn btn-primary">
-            <i class="bi bi-send"></i> 送出申請
+    <div class="mt-4 mb-5 d-flex gap-2">
+        <button type="submit" class="btn btn-primary px-4">
+            <i class="bi bi-send-fill"></i> 送出申請
         </button>
-        <a asp-action="Index" class="btn btn-outline-secondary">取消</a>
+        <a asp-action="Index" class="btn btn-outline-secondary">
+            <i class="bi bi-x-lg"></i> 取消
+        </a>
     </div>
 </form>
 
 @if (!ViewData.ModelState.IsValid)
 {
     <div class="alert alert-danger mt-3">
-        <div asp-validation-summary="All"></div>
+        <i class="bi bi-exclamation-triangle"></i> <div asp-validation-summary="All" class="d-inline"></div>
     </div>
 }

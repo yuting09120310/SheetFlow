@@ -12,15 +12,21 @@ public class FormsController : Controller
     private readonly IFormTemplateRepository _templateRepo;
     private readonly IFormRequestService _requestService;
     private readonly IApprovalWorkflowRepository _workflowRepo;
+    private readonly IUserRepository _userRepo;
+    private readonly IEmployeeProfileRepository _profileRepo;
 
     public FormsController(
         IFormTemplateRepository templateRepo,
         IFormRequestService requestService,
-        IApprovalWorkflowRepository workflowRepo)
+        IApprovalWorkflowRepository workflowRepo,
+        IUserRepository userRepo,
+        IEmployeeProfileRepository profileRepo)
     {
         _templateRepo = templateRepo;
         _requestService = requestService;
         _workflowRepo = workflowRepo;
+        _userRepo = userRepo;
+        _profileRepo = profileRepo;
     }
 
     [HttpGet]
@@ -37,11 +43,18 @@ public class FormsController : Controller
         if (template == null || !template.IsActive)
             return NotFound("表單不存在或已停用");
 
+        var userId = long.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
+        var username = User.Identity?.Name ?? "";
+        var applicant = await _userRepo.GetByIdAsync(userId);
+        var profile = await _profileRepo.GetByUsernameAsync(username);
+
         var fields = await _templateRepo.GetVisibleFieldsAsync(id);
         var vm = new DynamicFormSubmitViewModel
         {
             FormTemplateId = id,
             FormName = template.Name,
+            ApplicantName = profile?.FullName ?? applicant?.DisplayName ?? "",
+            ApplicantDepartment = applicant?.Department ?? "",
             Fields = fields.Select(f => new DynamicFieldViewModel
             {
                 FieldId = f.Id,
@@ -56,7 +69,6 @@ public class FormsController : Controller
             }).ToList()
         };
 
-        var userId = long.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
         var dependencies = await _workflowRepo.GetDependenciesByTemplateAsync(id);
         var depList = dependencies.ToList();
         if (depList.Any())
@@ -74,6 +86,9 @@ public class FormsController : Controller
     public async Task<IActionResult> Submit(long id, IFormCollection form, long? prerequisiteRequestId)
     {
         var userId = long.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
+        var username = User.Identity?.Name ?? "";
+        var applicant = await _userRepo.GetByIdAsync(userId);
+        var profile = await _profileRepo.GetByUsernameAsync(username);
         var formValues = new Dictionary<string, string>();
 
         var fields = await _templateRepo.GetVisibleFieldsAsync(id);
@@ -97,6 +112,8 @@ public class FormsController : Controller
             {
                 FormTemplateId = id,
                 FormName = template?.Name ?? "",
+                ApplicantName = profile?.FullName ?? applicant?.DisplayName ?? "",
+                ApplicantDepartment = applicant?.Department ?? "",
                 Fields = fields.Select(f => new DynamicFieldViewModel
                 {
                     FieldId = f.Id,

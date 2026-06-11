@@ -52,8 +52,8 @@ public class UserRepository : IUserRepository
     public async Task<long> CreateAsync(User user)
     {
         using var conn = _db.CreateConnection();
-        var sql = @"INSERT INTO [users] ([username],[password_hash],[display_name],[email],[line_user_id],[role],[department],[is_active],[created_at],[updated_at])
-                    VALUES (@Username,@PasswordHash,@DisplayName,@Email,@LineUserId,@Role,@Department,@IsActive,@CreatedAt,@UpdatedAt);
+        var sql = @"INSERT INTO [users] ([username],[password_hash],[display_name],[line_user_id],[role],[department],[is_active],[created_at],[updated_at])
+                    VALUES (@Username,@PasswordHash,@DisplayName,@LineUserId,@Role,@Department,@IsActive,@CreatedAt,@UpdatedAt);
                     SELECT CAST(SCOPE_IDENTITY() AS BIGINT)";
         return await conn.ExecuteScalarAsync<long>(sql, user);
     }
@@ -61,7 +61,7 @@ public class UserRepository : IUserRepository
     public async Task UpdateAsync(User user)
     {
         using var conn = _db.CreateConnection();
-        var sql = @"UPDATE [users] SET [display_name]=@DisplayName,[email]=@Email,
+        var sql = @"UPDATE [users] SET [display_name]=@DisplayName,[password_hash]=@PasswordHash,
                     [line_user_id]=@LineUserId,[role]=@Role,[department]=@Department,[is_active]=@IsActive,
                     [updated_at]=@UpdatedAt WHERE [id]=@Id";
         await conn.ExecuteAsync(sql, user);

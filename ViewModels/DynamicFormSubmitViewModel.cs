@@ -6,6 +6,8 @@ public class DynamicFormSubmitViewModel
 {
     public long FormTemplateId { get; set; }
     public string FormName { get; set; } = string.Empty;
+    public string ApplicantName { get; set; } = string.Empty;
+    public string ApplicantDepartment { get; set; } = string.Empty;
     public List<DynamicFieldViewModel> Fields { get; set; } = new();
     public List<FormRequest> AvailablePrerequisiteRequests { get; set; } = new();
     public long? SelectedPrerequisiteRequestId { get; set; }

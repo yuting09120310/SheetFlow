@@ -11,10 +11,12 @@ namespace SheetFlow.Controllers;
 public class AccountController : Controller
 {
     private readonly IUserRepository _userRepo;
+    private readonly IEmployeeProfileRepository _profileRepo;
 
-    public AccountController(IUserRepository userRepo)
+    public AccountController(IUserRepository userRepo, IEmployeeProfileRepository profileRepo)
     {
         _userRepo = userRepo;
+        _profileRepo = profileRepo;
     }
 
     [HttpGet]
@@ -44,12 +46,15 @@ public class AccountController : Controller
             return View(model);
         }
 
+        var profile = await _profileRepo.GetByUsernameAsync(user.Username);
+        var displayName = profile?.FullName ?? user.DisplayName;
+
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Name, user.Username),
             new(ClaimTypes.Role, user.Role),
-            new("DisplayName", user.DisplayName)
+            new("DisplayName", displayName)
         };
 
         var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);

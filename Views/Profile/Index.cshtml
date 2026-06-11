@@ -1,0 +1,46 @@
+@model SheetFlow.Models.EmployeeProfile
+@{ ViewData["Title"] = "個人資料"; }
+
+<h4 class="mb-3"><i class="bi bi-person-badge"></i> 個人資料</h4>
+
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-header bg-light"><i class="bi bi-info-circle"></i> 基本資料（僅檢視）</div>
+            <div class="card-body">
+                <table class="table table-sm table-borderless mb-0">
+                    <tr><td class="text-muted" width="120">姓名</td><td><strong>@Model.FullName</strong></td></tr>
+                    <tr><td class="text-muted">部門</td><td>@(ViewBag.Department ?? "-")</td></tr>
+                    <tr><td class="text-muted">最高學歷</td><td>@(Model.HighestEducation ?? "-")</td></tr>
+                    <tr><td class="text-muted">學校名稱</td><td>@(Model.SchoolName ?? "-")</td></tr>
+                    <tr><td class="text-muted">生日</td><td>@(Model.Birthday?.ToString("yyyy-MM-dd") ?? "-")</td></tr>
+                    <tr><td class="text-muted">手機號碼</td><td>@(Model.Phone ?? "-")</td></tr>
+                    <tr><td class="text-muted">居住地</td><td>@(Model.Address ?? "-")</td></tr>
+                    <tr><td class="text-muted">身分證字號</td><td>@(Model.IdNumber ?? "-")</td></tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card h-100 border-primary shadow-sm">
+            <div class="card-header bg-primary text-white"><i class="bi bi-pencil-square"></i> 可修改項目</div>
+            <div class="card-body">
+                <form asp-action="Update" method="post">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Email</label>
+                        <input type="email" name="email" class="form-control" value="@Model.Email" required />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">密碼（留空不修改）</label>
+                        <input type="text" name="password" class="form-control" placeholder="輸入新密碼" />
+                        <div class="form-text">密碼將以明碼儲存</div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save"></i> 儲存變更
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>

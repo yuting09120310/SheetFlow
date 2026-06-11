@@ -9,37 +9,46 @@ namespace SheetFlow.Services;
 public class EmailNotificationService : INotificationService
 {
     private readonly IUserRepository _userRepo;
+    private readonly IEmployeeProfileRepository _profileRepo;
     private readonly INotificationLogRepository _logRepo;
     private readonly IConfiguration _config;
 
     public EmailNotificationService(
         IUserRepository userRepo,
+        IEmployeeProfileRepository profileRepo,
         INotificationLogRepository logRepo,
         IConfiguration config)
     {
         _userRepo = userRepo;
+        _profileRepo = profileRepo;
         _logRepo = logRepo;
         _config = config;
+    }
+
+    private async Task<string?> GetEmailByUsernameAsync(string username)
+    {
+        var profile = await _profileRepo.GetByUsernameAsync(username);
+        return profile?.Email;
     }
 
     public async Task NotifyManagersAsync(string subject, string message)
     {
         var managers = await _userRepo.GetAllAsync();
-        managers = managers.Where(u =>
-            (u.Role == "Manager" || u.Role == "Admin") && u.IsActive && !string.IsNullOrEmpty(u.Email));
-
-        foreach (var manager in managers)
+        foreach (var manager in managers.Where(u => (u.Role == "Manager" || u.Role == "Admin") && u.IsActive))
         {
-            await SendEmailAsync(manager.Email!, subject, message, 0);
+            var email = await GetEmailByUsernameAsync(manager.Username);
+            if (!string.IsNullOrEmpty(email))
+                await SendEmailAsync(email, subject, message, 0);
         }
     }
 
     public async Task NotifyUserAsync(long userId, string subject, string message)
     {
         var user = await _userRepo.GetByIdAsync(userId);
-        if (user == null || string.IsNullOrEmpty(user.Email)) return;
-
-        await SendEmailAsync(user.Email, subject, message, 0);
+        if (user == null) return;
+        var email = await GetEmailByUsernameAsync(user.Username);
+        if (!string.IsNullOrEmpty(email))
+            await SendEmailAsync(email, subject, message, 0);
     }
 
     private async Task SendEmailAsync(string to, string subject, string body, long requestId)
