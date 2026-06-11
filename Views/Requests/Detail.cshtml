@@ -78,9 +78,22 @@
                 @foreach (var field in Model.Fields)
                 {
                     var value = Model.Values.FirstOrDefault(v => v.FieldKey == field.FieldKey);
+                    var displayValue = value?.FieldValue ?? "-";
+                    var isSignature = field.FieldType == "Signature" && displayValue.StartsWith("data:image");
+                    var fieldName = field.FieldKey == "signature" ? "人員簽名" : field.FieldName;
+
                     <div class="row mb-2">
-                        <div class="col-sm-3 text-muted">@field.FieldName</div>
-                        <div class="col-sm-9">@(value?.FieldValue ?? "-")</div>
+                        <div class="col-sm-3 text-muted">@fieldName</div>
+                        <div class="col-sm-9">
+                            @if (isSignature)
+                            {
+                                <img src="@displayValue" style="max-height: 80px; border: 1px solid #ddd; padding: 2px; background: white;" />
+                            }
+                            else
+                            {
+                                @displayValue
+                            }
+                        </div>
                     </div>
                 }
             </div>
