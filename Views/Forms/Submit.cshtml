@@ -259,20 +259,33 @@
                 // Store mobile signature
                 mobileSignatureData = imageData;
                 
-                // Update hidden input
-                const input = document.getElementById(`signature_input_${currentFieldId}`);
-                input.value = imageData;
-                
                 // Draw on local canvas so user can see it
                 if (signaturePad) {
                     signaturePad.fromDataURL(imageData);
                 }
+                
+                // Update hidden input
+                const input = document.getElementById(`signature_input_${currentFieldId}`);
+                input.value = imageData;
                 
                 // Update preview box
                 const wrapper = document.querySelector(`.signature-field-wrapper[data-field-id="${currentFieldId}"]`);
                 const previewBox = wrapper.querySelector('.signature-preview-box');
                 previewBox.innerHTML = `<img src="${imageData}" class="signature-img" />`;
                 ensureResignButton(wrapper, currentFieldId);
+            } else {
+                // Mobile cleared signature - clear local canvas too
+                mobileSignatureData = null;
+                if (signaturePad) {
+                    signaturePad.clear();
+                }
+                const input = document.getElementById(`signature_input_${currentFieldId}`);
+                input.value = '';
+                const wrapper = document.querySelector(`.signature-field-wrapper[data-field-id="${currentFieldId}"]`);
+                const previewBox = wrapper.querySelector('.signature-preview-box');
+                previewBox.innerHTML = '<span class="text-muted small">點擊此處簽名</span>';
+                const btn = wrapper.querySelector('.btn-resign');
+                if (btn) btn.remove();
             }
         });
 
