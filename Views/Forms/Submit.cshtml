@@ -94,12 +94,17 @@
                                             <span class="text-muted small">點擊此處簽名</span>
                                         }
                                     </div>
-                                    @if (!string.IsNullOrEmpty(field.Value))
-                                    {
-                                        <button type="button" class="btn btn-sm btn-outline-danger mt-1" onclick="clearSignatureField(@field.FieldId)">
-                                            <i class="bi bi-arrow-repeat"></i> 重簽
+                                    <div class="d-flex flex-column gap-1">
+                                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="openMobileSignature(@field.FieldId)" title="使用手機/平板簽名">
+                                            <i class="bi bi-qr-code"></i>
                                         </button>
-                                    }
+                                        @if (!string.IsNullOrEmpty(field.Value))
+                                        {
+                                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="clearSignatureField(@field.FieldId)">
+                                                <i class="bi bi-arrow-repeat"></i>
+                                            </button>
+                                        }
+                                    </div>
                                 </div>
                                 <input type="hidden" name="field_@field.FieldId" id="signature_input_@field.FieldId" value="@field.Value" />
                             </div>
@@ -139,8 +144,21 @@
             <h5 class="mb-0">請簽名</h5>
             <button type="button" class="btn-close" onclick="closeSignatureModal()"></button>
         </div>
-        <div class="signature-canvas-wrapper">
-            <canvas id="signatureCanvas"></canvas>
+        <div class="signature-body">
+            <div class="signature-canvas-wrapper">
+                <canvas id="signatureCanvas"></canvas>
+            </div>
+            <div class="signature-qr-section">
+                <div class="qr-header">
+                    <i class="bi bi-phone"></i> 行動裝置簽名
+                </div>
+                <img id="modalQrCode" src="" alt="QR Code" style="width: 150px; height: 150px;" />
+                <small class="text-muted d-block mt-2">掃描後請橫向簽名</small>
+                <div class="signature-sync-preview mt-2">
+                    <img id="syncPreview" style="max-width: 100%; max-height: 80px; display: none;" />
+                    <span id="syncText" class="text-muted small">等待簽名...</span>
+                </div>
+            </div>
         </div>
         <div class="signature-footer">
             <button type="button" class="btn btn-outline-secondary" onclick="clearSignature()">清除</button>
@@ -150,11 +168,34 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.0.0/dist/signature_pad.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@@microsoft/signalr@8.0.0/dist/browser/signalr.min.js"></script>
 <script>
     let currentFieldId = null;
     let signaturePad = null;
+    let connection = null;
+    let currentSessionId = null;
+    let currentQrCode = null;
 
-    function openSignatureModal(fieldId) {
+    async function ensureSession() {
+        if (currentSessionId && currentQrCode) {
+            return { sessionId: currentSessionId, qrCode: currentQrCode };
+        }
+        
+        console.log('Creating new session...');
+        const response = await fetch('/Signature/CreateSession', { method: 'POST' });
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('CreateSession failed:', response.status, errorText);
+            throw new Error(`Failed to create session: ${response.status}`);
+        }
+        const data = await response.json();
+        console.log('Session created:', { sessionId: data.sessionId, qrCodeLength: data.qrCode?.length });
+        currentSessionId = data.sessionId;
+        currentQrCode = data.qrCode;
+        return { sessionId: currentSessionId, qrCode: currentQrCode };
+    }
+
+    async function openSignatureModal(fieldId) {
         currentFieldId = fieldId;
         const modal = document.getElementById('signatureModal');
         modal.classList.remove('d-none');
@@ -169,16 +210,97 @@
             penColor: 'rgb(0, 0, 0)'
         });
 
-        // Restore existing signature if any
         const input = document.getElementById(`signature_input_${fieldId}`);
         if (input.value) {
             signaturePad.fromDataURL(input.value);
+            updateSyncPreview(input.value);
+        } else {
+            updateSyncPreview('');
+        }
+
+        try {
+            const sessionData = await ensureSession();
+            console.log('Setting QR code, length:', sessionData.qrCode?.length);
+            document.getElementById('modalQrCode').src = sessionData.qrCode;
+            await connectToSignatureHub(sessionData.sessionId);
+        } catch (err) {
+            console.error("Session error:", err);
+            alert('無法啟動簽名會話，請重新整理頁面');
         }
     }
 
-    function closeSignatureModal() {
+    async function openMobileSignature(fieldId) {
+        currentFieldId = fieldId;
+        try {
+            const sessionData = await ensureSession();
+            const url = `/Signature/Sign?sessionId=${sessionData.sessionId}`;
+            window.open(url, '_blank', 'width=800,height=600');
+            openSignatureModal(fieldId);
+        } catch (err) {
+            console.error("Mobile signature error:", err);
+        }
+    }
+
+    async function connectToSignatureHub(sessionId) {
+        if (connection) {
+            await connection.stop();
+        }
+
+        connection = new signalR.HubConnectionBuilder()
+            .withUrl("/signatureHub")
+            .withAutomaticReconnect()
+            .build();
+
+        connection.on("SignatureUpdated", (imageData) => {
+            updateSyncPreview(imageData);
+            if (imageData && imageData.startsWith('data:image')) {
+                const input = document.getElementById(`signature_input_${currentFieldId}`);
+                input.value = imageData;
+                const wrapper = document.querySelector(`.signature-field-wrapper[data-field-id="${currentFieldId}"]`);
+                const previewBox = wrapper.querySelector('.signature-preview-box');
+                previewBox.innerHTML = `<img src="${imageData}" class="signature-img" />`;
+                ensureResignButton(wrapper, currentFieldId);
+            }
+        });
+
+        try {
+            await connection.start();
+            await connection.invoke("JoinSession", sessionId);
+        } catch (err) {
+            console.error("SignalR connection failed:", err);
+        }
+    }
+
+    function updateSyncPreview(imageData) {
+        const preview = document.getElementById('syncPreview');
+        const text = document.getElementById('syncText');
+        if (imageData && imageData.startsWith('data:image')) {
+            preview.src = imageData;
+            preview.style.display = 'block';
+            text.style.display = 'none';
+        } else {
+            preview.style.display = 'none';
+            text.style.display = 'block';
+            text.textContent = '等待簽名...';
+        }
+    }
+
+    async function closeSignatureModal() {
         document.getElementById('signatureModal').classList.add('d-none');
+        
+        if (currentSessionId) {
+            try {
+                await fetch(`/Signature/EndSession?sessionId=${currentSessionId}`, { method: 'POST' });
+            } catch (e) { console.error(e); }
+        }
+
+        if (connection) {
+            await connection.stop();
+            connection = null;
+        }
         currentFieldId = null;
+        currentSessionId = null;
+        currentQrCode = null;
     }
 
     function clearSignature() {
@@ -194,12 +316,24 @@
         const input = document.getElementById(`signature_input_${currentFieldId}`);
         input.value = dataUrl;
 
-        // Update preview
         const wrapper = document.querySelector(`.signature-field-wrapper[data-field-id="${currentFieldId}"]`);
         const previewBox = wrapper.querySelector('.signature-preview-box');
         previewBox.innerHTML = `<img src="${dataUrl}" class="signature-img" />`;
+        ensureResignButton(wrapper, currentFieldId);
 
         closeSignatureModal();
+    }
+
+    function ensureResignButton(wrapper, fieldId) {
+        let btn = wrapper.querySelector('.btn-resign');
+        if (!btn) {
+            btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn btn-sm btn-outline-danger btn-resign';
+            btn.innerHTML = '<i class="bi bi-arrow-repeat"></i>';
+            btn.onclick = () => clearSignatureField(fieldId);
+            wrapper.querySelector('.d-flex').appendChild(btn);
+        }
     }
 
     function clearSignatureField(fieldId) {
@@ -208,24 +342,18 @@
             const wrapper = document.querySelector(`.signature-field-wrapper[data-field-id="${fieldId}"]`);
             const previewBox = wrapper.querySelector('.signature-preview-box');
             previewBox.innerHTML = '<span class="text-muted small">點擊此處簽名</span>';
-            
-            const btn = wrapper.querySelector('button');
+            const btn = wrapper.querySelector('.btn-resign');
             if(btn) btn.remove();
-            
             openSignatureModal(fieldId);
         }
     }
 
-    // Handle window resize
     window.addEventListener('resize', () => {
         if (!document.getElementById('signatureModal').classList.contains('d-none')) {
             const canvas = document.getElementById('signatureCanvas');
             const wrapper = canvas.parentElement;
             canvas.width = wrapper.clientWidth;
             canvas.height = wrapper.clientHeight;
-            // Note: resizing clears the canvas in signature_pad, so we might need to restore data
-            // For simplicity, we'll just let it be or user can re-sign. 
-            // A better approach is to save data before resize and restore, but for now this is acceptable.
         }
     });
 </script>
@@ -267,7 +395,7 @@
     .signature-modal-content {
         background: white;
         width: 90%;
-        max-width: 800px;
+        max-width: 1000px;
         height: 80vh;
         border-radius: 12px;
         display: flex;
@@ -281,11 +409,42 @@
         justify-content: space-between;
         align-items: center;
     }
-    .signature-canvas-wrapper {
+    .signature-body {
         flex: 1;
+        display: flex;
+        overflow: hidden;
+    }
+    .signature-canvas-wrapper {
+        flex: 2;
         position: relative;
         background: #fff;
         touch-action: none;
+        border-right: 1px solid #eee;
+    }
+    .signature-qr-section {
+        flex: 1;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: #f8f9fa;
+    }
+    .qr-header {
+        font-weight: bold;
+        margin-bottom: 15px;
+        color: #0d6efd;
+    }
+    .signature-sync-preview {
+        width: 100%;
+        text-align: center;
+        min-height: 80px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px dashed #ccc;
+        border-radius: 4px;
+        background: white;
     }
     #signatureCanvas {
         width: 100%;
@@ -306,6 +465,19 @@
             height: 100vh;
             max-width: none;
             border-radius: 0;
+        }
+        .signature-body {
+            flex-direction: column;
+        }
+        .signature-canvas-wrapper {
+            flex: 1;
+            border-right: none;
+            border-bottom: 1px solid #eee;
+        }
+        .signature-qr-section {
+            flex: none;
+            padding: 10px;
+            max-height: 200px;
         }
     }
     @@media (max-width: 768px) and (orientation: portrait) {

@@ -1,0 +1,277 @@
+@{
+    ViewData["Title"] = "行動簽名";
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>行動簽名 - SheetFlow</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" />
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #f0f0f0;
+            touch-action: none;
+            height: 100vh;
+            width: 100vw;
+        }
+        .signature-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            gap: 10px;
+        }
+        .signature-header {
+            background: #0d6efd;
+            color: white;
+            padding: 12px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-radius: 8px;
+            flex-shrink: 0;
+        }
+        .signature-canvas-wrapper {
+            flex: 1;
+            min-height: 0;
+            position: relative;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        #signatureCanvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            cursor: crosshair;
+        }
+        .signature-footer {
+            padding: 12px 15px;
+            background: white;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            border-radius: 8px;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+            flex-shrink: 0;
+        }
+        .btn-sign {
+            padding: 12px 30px;
+            font-size: 16px;
+            font-weight: bold;
+            flex: 1;
+            max-width: 200px;
+        }
+        .orientation-warning {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            color: white;
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            text-align: center;
+            padding: 20px;
+        }
+        .orientation-warning i {
+            font-size: 60px;
+            margin-bottom: 20px;
+            animation: rotate 2s infinite;
+        }
+        @@keyframes rotate {
+            0% { transform: rotate(0deg); }
+            25% { transform: rotate(90deg); }
+            100% { transform: rotate(90deg); }
+        }
+        @@media (orientation: portrait) {
+            .orientation-warning {
+                display: flex;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="orientation-warning">
+        <i class="bi bi-phone"></i>
+        <h4>請將裝置旋轉為橫向</h4>
+        <p class="mt-2">橫向簽名可獲得更好的體驗</p>
+    </div>
+
+    <div class="signature-container">
+        <div class="signature-header">
+            <span><i class="bi bi-pen"></i> 請簽名</span>
+            <span class="badge bg-light text-dark" id="statusBadge">連線中...</span>
+        </div>
+        <div class="signature-canvas-wrapper">
+            <canvas id="signatureCanvas"></canvas>
+        </div>
+        <div class="signature-footer">
+            <button type="button" class="btn btn-outline-secondary btn-sign" onclick="clearCanvas()">
+                <i class="bi bi-eraser"></i> 清除
+            </button>
+            <button type="button" class="btn btn-primary btn-sign" onclick="saveSignature()">
+                <i class="bi bi-check-lg"></i> 完成並同步
+            </button>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css"></script>
+    <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.0.0/dist/signature_pad.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@@microsoft/signalr@8.0.0/dist/browser/signalr.min.js"></script>
+    <script>
+        const sessionId = '@ViewBag.SessionId';
+        let signaturePad = null;
+        let connection = null;
+
+        function initCanvas() {
+            const canvas = document.getElementById('signatureCanvas');
+            const wrapper = canvas.parentElement;
+            canvas.width = wrapper.clientWidth;
+            canvas.height = wrapper.clientHeight;
+
+            signaturePad = new SignaturePad(canvas, {
+                backgroundColor: 'rgba(255, 255, 255, 0)',
+                penColor: 'rgb(0, 0, 0)',
+                minWidth: 1,
+                maxWidth: 3
+            });
+
+            signaturePad.addEventListener('endStroke', () => {
+                if (!signaturePad.isEmpty()) {
+                    syncSignature();
+                }
+            });
+        }
+
+        function clearCanvas() {
+            signaturePad.clear();
+            syncSignature();
+        }
+
+        async function saveSignature() {
+            if (signaturePad.isEmpty()) {
+                alert('請先簽名');
+                return;
+            }
+            await syncSignature();
+            
+            // End session after successful save
+            try {
+                await fetch(`/Signature/EndSession?sessionId=${sessionId}`, { method: 'POST' });
+            } catch (e) { console.error(e); }
+
+            alert('簽名已同步至電腦版！');
+            
+            // Optional: Close window or show success message
+            // window.close(); 
+        }
+
+        async function syncSignature() {
+            const fieldId = '@ViewBag.FieldId';
+            if (signaturePad.isEmpty()) {
+                await fetch(`/Signature/SaveSignature?sessionId=${sessionId}&fieldId=${fieldId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify('')
+                });
+                return;
+            }
+            const dataUrl = signaturePad.toDataURL('image/png');
+            await fetch(`/Signature/SaveSignature?sessionId=${sessionId}&fieldId=${fieldId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(dataUrl)
+            });
+        }
+
+        async function initSignalR() {
+            const baseUrl = window.location.origin;
+            connection = new signalR.HubConnectionBuilder()
+                .withUrl(`${baseUrl}/signatureHub`, {
+                    skipNegotiation: true,
+                    transport: signalR.HttpTransportType.WebSockets
+                })
+                .withAutomaticReconnect([0, 2000, 5000, 10000])
+                .configureLogging(signalR.LogLevel.Information)
+                .build();
+
+            connection.on("SignatureRequested", () => {
+                document.getElementById('statusBadge').textContent = '等待簽名...';
+                document.getElementById('statusBadge').className = 'badge bg-warning text-dark';
+            });
+
+            connection.onclose((error) => {
+                console.error('Connection closed:', error);
+                document.getElementById('statusBadge').textContent = '已斷線';
+                document.getElementById('statusBadge').className = 'badge bg-danger';
+            });
+
+            connection.onreconnecting((error) => {
+                console.log('Reconnecting:', error);
+                document.getElementById('statusBadge').textContent = '重新連線中...';
+                document.getElementById('statusBadge').className = 'badge bg-warning text-dark';
+            });
+
+            connection.onreconnected((connectionId) => {
+                console.log('Reconnected:', connectionId);
+                document.getElementById('statusBadge').textContent = '已連線';
+                document.getElementById('statusBadge').className = 'badge bg-success';
+            });
+
+            try {
+                await connection.start();
+                await connection.invoke("JoinSession", sessionId);
+                document.getElementById('statusBadge').textContent = '已連線';
+                document.getElementById('statusBadge').className = 'badge bg-success';
+            } catch (err) {
+                console.error('SignalR connection failed:', err);
+                document.getElementById('statusBadge').textContent = '連線失敗';
+                document.getElementById('statusBadge').className = 'badge bg-danger';
+                
+                // 嘗試降級到 LongPolling
+                try {
+                    connection = new signalR.HubConnectionBuilder()
+                        .withUrl(`${baseUrl}/signatureHub`)
+                        .withAutomaticReconnect()
+                        .build();
+                    
+                    await connection.start();
+                    await connection.invoke("JoinSession", sessionId);
+                    document.getElementById('statusBadge').textContent = '已連線 (降級)';
+                    document.getElementById('statusBadge').className = 'badge bg-success';
+                } catch (err2) {
+                    console.error('Fallback also failed:', err2);
+                }
+            }
+        }
+
+        window.addEventListener('load', () => {
+            initCanvas();
+            initSignalR();
+        });
+
+        window.addEventListener('resize', () => {
+            if (signaturePad) {
+                const data = signaturePad.toData();
+                initCanvas();
+                signaturePad.fromData(data);
+            }
+        });
+    </script>
+</body>
+</html>

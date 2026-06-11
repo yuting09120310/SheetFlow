@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SheetFlow.Infrastructure;
 using SheetFlow.Repositories;
 
 namespace SheetFlow.Controllers;
@@ -41,7 +42,7 @@ public class ProfileController : Controller
             var user = await _userRepo.GetByUsernameAsync(username);
             if (user != null)
             {
-                user.PasswordHash = password;
+                user.PasswordHash = PasswordHelper.HashPassword(password);
                 await _userRepo.UpdateAsync(user);
             }
         }
