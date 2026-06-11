@@ -83,14 +83,22 @@
                                 break;
                         case "Signature":
                             <div class="signature-field-wrapper" data-field-id="@field.FieldId">
-                                <div class="signature-preview-box" onclick="openSignatureModal(@field.FieldId)">
+                                <div class="d-flex align-items-start gap-2">
+                                    <div class="signature-preview-box flex-grow-1" onclick="openSignatureModal(@field.FieldId)">
+                                        @if (!string.IsNullOrEmpty(field.Value))
+                                        {
+                                            <img src="@field.Value" class="signature-img" />
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted small">點擊此處簽名</span>
+                                        }
+                                    </div>
                                     @if (!string.IsNullOrEmpty(field.Value))
                                     {
-                                        <img src="@field.Value" class="signature-img" />
-                                    }
-                                    else
-                                    {
-                                        <span class="text-muted small">點擊此處簽名</span>
+                                        <button type="button" class="btn btn-sm btn-outline-danger mt-1" onclick="clearSignatureField(@field.FieldId)">
+                                            <i class="bi bi-arrow-repeat"></i> 重簽
+                                        </button>
                                     }
                                 </div>
                                 <input type="hidden" name="field_@field.FieldId" id="signature_input_@field.FieldId" value="@field.Value" />
@@ -192,6 +200,20 @@
         previewBox.innerHTML = `<img src="${dataUrl}" class="signature-img" />`;
 
         closeSignatureModal();
+    }
+
+    function clearSignatureField(fieldId) {
+        if (confirm('確定要清除簽名並重新簽名嗎？')) {
+            document.getElementById(`signature_input_${fieldId}`).value = '';
+            const wrapper = document.querySelector(`.signature-field-wrapper[data-field-id="${fieldId}"]`);
+            const previewBox = wrapper.querySelector('.signature-preview-box');
+            previewBox.innerHTML = '<span class="text-muted small">點擊此處簽名</span>';
+            
+            const btn = wrapper.querySelector('button');
+            if(btn) btn.remove();
+            
+            openSignatureModal(fieldId);
+        }
     }
 
     // Handle window resize
