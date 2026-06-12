@@ -3,40 +3,39 @@
 
 <h4 class="mb-3"><i class="bi bi-pencil-square"></i> @Model.FormName</h4>
 
-@if (Model.AvailablePrerequisiteRequests.Any())
-{
-    <div class="card mb-3 border-warning bg-warning bg-opacity-10">
-        <div class="card-body">
-            <div class="d-flex align-items-start gap-2">
-                <i class="bi bi-link-45deg text-warning fs-5 mt-1"></i>
-                <div class="flex-grow-1">
-                    <strong class="d-block mb-1">前置表單（必填）</strong>
-                    <p class="mb-2 small text-muted">此表單需要依賴已審核完成的 <strong>@Model.PrerequisiteTemplateName</strong> 才能提交</p>
-                    <select name="prerequisiteRequestId" class="form-select form-select-sm" required style="max-width: 400px;">
-                        <option value="">-- 請選擇已審核單據 --</option>
-                        @foreach (var req in Model.AvailablePrerequisiteRequests)
-                        {
-                            <option value="@req.Id">@req.RequestNo - @req.FormName (@req.SubmittedAt?.ToString("yyyy-MM-dd"))</option>
-                        }
-                    </select>
+<form asp-action="Submit" asp-route-id="@Model.FormTemplateId" method="post">
+    @if (Model.AvailablePrerequisiteRequests.Any())
+    {
+        <div class="card mb-3 border-warning bg-warning bg-opacity-10">
+            <div class="card-body">
+                <div class="d-flex align-items-start gap-2">
+                    <i class="bi bi-link-45deg text-warning fs-5 mt-1"></i>
+                    <div class="flex-grow-1">
+                        <strong class="d-block mb-1">前置表單（必填）</strong>
+                        <p class="mb-2 small text-muted">此表單需要依賴已審核完成的 <strong>@Model.PrerequisiteTemplateName</strong> 才能提交</p>
+                        <select name="prerequisiteRequestId" class="form-select form-select-sm" required style="max-width: 400px;">
+                            <option value="">-- 請選擇已審核單據 --</option>
+                            @foreach (var req in Model.AvailablePrerequisiteRequests)
+                            {
+                                <option value="@req.Id">@req.RequestNo - @req.FormName (@req.SubmittedAt?.ToString("yyyy-MM-dd"))</option>
+                            }
+                        </select>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
-}
-
-<div class="card mb-3 border-primary bg-primary bg-opacity-10">
-    <div class="card-body py-2">
-        <div class="row g-2 align-items-center">
-            <div class="col-auto"><i class="bi bi-person-badge text-primary"></i></div>
-            <div class="col-auto"><strong>申請人：</strong>@Model.ApplicantName</div>
-            <div class="col-auto text-muted">|</div>
-            <div class="col-auto"><strong>部門：</strong>@Model.ApplicantDepartment</div>
+    }
+    <div class="card mb-3 border-primary bg-primary bg-opacity-10">
+        <div class="card-body py-2">
+            <div class="row g-2 align-items-center">
+                <div class="col-auto"><i class="bi bi-person-badge text-primary"></i></div>
+                <div class="col-auto"><strong>申請人：</strong>@Model.ApplicantName</div>
+                <div class="col-auto text-muted">|</div>
+                <div class="col-auto"><strong>部門：</strong>@Model.ApplicantDepartment</div>
+            </div>
         </div>
     </div>
-</div>
 
-<form asp-action="Submit" asp-route-id="@Model.FormTemplateId" method="post">
     <div class="card shadow-sm">
         <div class="card-body">
             <div class="row g-3">
@@ -45,6 +44,8 @@
                 var field = Model.Fields[i];
                 var skipField = field.FieldKey == "applicant" || field.FieldKey == "department";
                 if (skipField) continue;
+
+                if (field.FieldType == "Signature" && field.FieldKey != "acceptor") continue;
 
                 var isFullWidth = field.FieldType == "Textarea" || field.FieldKey == "description" || field.FieldKey == "reason" || field.FieldKey == "remarks" || field.FieldKey == "specification";
                 var colClass = isFullWidth ? "col-12" : "col-md-6 col-lg-4";

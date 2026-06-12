@@ -151,7 +151,7 @@ public class FormRequestService : IFormRequestService
             }
 
             var firstStep = stepList.OrderBy(s => s.StepOrder).First();
-            firstStep.AssignedUserId = await ResolveApproverAsync(firstStep.ApproverType, firstStep.ApproverTarget, applicant);
+            firstStep.AssignedUserId = await ResolveApproverAsync(firstStep.ApproverType, firstStep.ApproverTarget, applicant, requestId);
             await _workflowRepo.UpdateStepInstanceAsync(firstStep);
         }
 
@@ -175,7 +175,7 @@ public class FormRequestService : IFormRequestService
         await NotifyNextApproverAsync(requestId, template?.Name ?? "");
     }
 
-    public async Task ApproveRequestAsync(long requestId, long approverId, string? comment)
+    public async Task ApproveRequestAsync(long requestId, long approverId, string? comment, string? signatureFieldKey = null, long? signatureFieldId = null, string? signatureValue = null)
     {
         var request = await _requestRepo.GetByIdAsync(requestId)
             ?? throw new Exception("申請單不存在");
@@ -189,6 +189,35 @@ public class FormRequestService : IFormRequestService
             var approver = await _userRepo.GetByIdAsync(approverId);
             if (approver?.Role != "Admin")
                 throw new Exception("您不是此步驟的簽核者");
+        }
+
+        if (!string.IsNullOrEmpty(signatureFieldKey) && signatureFieldId.HasValue && !string.IsNullOrEmpty(signatureValue))
+        {
+            var existingValue = (await _requestRepo.GetValuesAsync(requestId)).FirstOrDefault(v => v.FieldId == signatureFieldId.Value);
+            if (existingValue != null)
+            {
+                existingValue.FieldValue = signatureValue;
+                existingValue.UpdatedAt = DateTime.UtcNow;
+                await _requestRepo.UpdateValueAsync(existingValue);
+            }
+            else
+            {
+                var field = (await _templateRepo.GetVisibleFieldsAsync(request.FormTemplateId)).FirstOrDefault(f => f.Id == signatureFieldId.Value);
+                if (field != null)
+                {
+                    var rv = new FormRequestValue
+                    {
+                        FormRequestId = requestId,
+                        FieldId = field.Id,
+                        FieldKey = field.FieldKey,
+                        FieldName = field.FieldName,
+                        FieldValue = signatureValue,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+                    await _requestRepo.CreateValueAsync(rv);
+                }
+            }
         }
 
         var now = DateTime.UtcNow;
@@ -212,7 +241,7 @@ public class FormRequestService : IFormRequestService
         if (nextStep != null)
         {
             var applicant = await _userRepo.GetByIdAsync(request.ApplicantId);
-            nextStep.AssignedUserId = await ResolveApproverAsync(nextStep.ApproverType, nextStep.ApproverTarget, applicant!);
+            nextStep.AssignedUserId = await ResolveApproverAsync(nextStep.ApproverType, nextStep.ApproverTarget, applicant!, requestId);
             await _workflowRepo.UpdateStepInstanceAsync(nextStep);
             if (nextStep.AssignedUserId.HasValue)
             {
@@ -331,7 +360,7 @@ public class FormRequestService : IFormRequestService
 
         foreach (var step in workflow.Steps.OrderBy(s => s.StepOrder))
         {
-            var assignedUserId = await ResolveApproverAsync(step.ApproverType, step.ApproverTarget, applicant);
+            var assignedUserId = await ResolveApproverAsync(step.ApproverType, step.ApproverTarget, applicant, requestId);
             resolvedSteps.Add((step, assignedUserId));
         }
 
@@ -372,7 +401,7 @@ public class FormRequestService : IFormRequestService
         return result;
     }
 
-    private async Task<long?> ResolveApproverAsync(string approverType, string? approverTarget, User applicant)
+    private async Task<long?> ResolveApproverAsync(string approverType, string? approverTarget, User applicant, long? requestId = null)
     {
         switch (approverType)
         {
@@ -385,6 +414,29 @@ public class FormRequestService : IFormRequestService
                 }
                 var allUsers1 = await _userRepo.GetAllAsync();
                 return allUsers1.FirstOrDefault(u => u.Role == "Admin")?.Id;
+
+            case "LinkedRequestApplicantDepartmentManager":
+                if (requestId.HasValue)
+                {
+                    var deps = await _workflowRepo.GetDependenciesByRequestAsync(requestId.Value);
+                    var dep = deps.FirstOrDefault();
+                    if (dep != null)
+                    {
+                        var linkedRequest = await _requestRepo.GetByIdAsync(dep.RequiredRequestId);
+                        if (linkedRequest != null)
+                        {
+                            var linkedApplicant = await _userRepo.GetByIdAsync(linkedRequest.ApplicantId);
+                            if (linkedApplicant != null && !string.IsNullOrEmpty(linkedApplicant.Department))
+                            {
+                                var mgr = await _userRepo.GetDepartmentManagerAsync(linkedApplicant.Department);
+                                if (mgr != null)
+                                    return mgr.Id;
+                            }
+                        }
+                    }
+                }
+                var allUsersLinked = await _userRepo.GetAllAsync();
+                return allUsersLinked.FirstOrDefault(u => u.Role == "Admin")?.Id;
 
             case "SpecificDepartmentManager":
                 if (!string.IsNullOrEmpty(approverTarget))

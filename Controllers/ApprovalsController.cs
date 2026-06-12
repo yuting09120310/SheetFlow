@@ -43,12 +43,12 @@ public class ApprovalsController : Controller
     }
 
     [HttpPost]
-    public async Task<IActionResult> Approve(long id, string? comment)
+    public async Task<IActionResult> Approve(long id, string? comment, string? signature_field_key, long? signature_field_id, string? signature_value)
     {
         var userId = long.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
         try
         {
-            await _requestService.ApproveRequestAsync(id, userId, comment);
+            await _requestService.ApproveRequestAsync(id, userId, comment, signature_field_key, signature_field_id, signature_value);
             TempData["Success"] = "申請已核准。";
         }
         catch (Exception ex)

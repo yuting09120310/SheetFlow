@@ -114,6 +114,14 @@ public class FormRequestRepository : IFormRequestRepository
         return await conn.ExecuteScalarAsync<long>(sql, value);
     }
 
+    public async Task UpdateValueAsync(FormRequestValue value)
+    {
+        using var conn = _db.CreateConnection();
+        await conn.ExecuteAsync(
+            "UPDATE [form_request_values] SET [field_value]=@FieldValue,[updated_at]=@UpdatedAt WHERE [id]=@Id",
+            value);
+    }
+
     public async Task DeleteValuesAsync(long requestId)
     {
         using var conn = _db.CreateConnection();

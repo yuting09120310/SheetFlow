@@ -4,7 +4,29 @@
     var isApprover = User.IsInRole("Manager") || User.IsInRole("Admin");
     var isOwner = Model.Request.ApplicantId.ToString() == User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
     var currentUserId = long.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "0");
-    var canApprove = isApprover && Model.Request.Status == "Pending" && Model.StepInstances.Any(s => s.Status == "Pending" && s.AssignedUserId == currentUserId);
+    var currentStep = Model.StepInstances.FirstOrDefault(s => s.Status == "Pending" && s.AssignedUserId == currentUserId);
+    var canApprove = isApprover && Model.Request.Status == "Pending" && currentStep != null;
+
+    var signatureFieldMap = new Dictionary<string, string>
+    {
+        { "acceptor", "驗收人" },
+        { "acceptance_unit_manager", "驗收單位主管" },
+        { "request_unit_manager", "請購單位主管" }
+    };
+
+    string GetCurrentStepSignatureFieldKey()
+    {
+        if (currentStep == null) return "";
+        var stepOrder = currentStep.StepOrder;
+        return stepOrder switch
+        {
+            1 => "acceptance_unit_manager",
+            2 => "request_unit_manager",
+            _ => ""
+        };
+    }
+
+    var currentSignatureFieldKey = GetCurrentStepSignatureFieldKey();
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -81,17 +103,47 @@
                     var displayValue = value?.FieldValue ?? "-";
                     var isSignature = field.FieldType == "Signature" && displayValue.StartsWith("data:image");
                     var fieldName = field.FieldKey == "signature" ? "人員簽名" : field.FieldName;
+                    var isCurrentStepSignature = canApprove && field.FieldKey == currentSignatureFieldKey;
+
+                    if (field.FieldType == "Signature")
+                    {
+                        if (!isSignature && !isCurrentStepSignature)
+                        {
+                            continue;
+                        }
+                    }
 
                     <div class="row mb-2">
                         <div class="col-sm-3 text-muted">@fieldName</div>
                         <div class="col-sm-9">
-                            @if (isSignature)
+                            @if (field.FieldType != "Signature")
+                            {
+                                @displayValue
+                            }
+                            else if (isSignature)
                             {
                                 <img src="@displayValue" style="max-height: 80px; border: 1px solid #ddd; padding: 2px; background: white;" />
+                                <span class="badge bg-secondary ms-2">已簽名</span>
+                            }
+                            else if (isCurrentStepSignature)
+                            {
+                                <div class="signature-field-wrapper" data-field-id="@field.Id">
+                                    <div class="d-flex align-items-start gap-2">
+                                        <div class="signature-preview-box flex-grow-1" onclick="openSignatureModal(@field.Id)">
+                                            <span class="text-muted small">點擊此處簽名</span>
+                                        </div>
+                                        <div class="d-flex flex-column gap-1">
+                                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="openMobileSignature(@field.Id)" title="使用手機/平板簽名">
+                                                <i class="bi bi-qr-code"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <input type="hidden" name="approver_signature" id="signature_input_@field.Id" value="" />
+                                </div>
                             }
                             else
                             {
-                                @displayValue
+                                <span class="text-muted">尚未簽名</span>
                             }
                         </div>
                     </div>
@@ -153,26 +205,29 @@
                     <i class="bi bi-check2-square"></i> 審核操作
                 </div>
                 <div class="card-body">
-                    <div class="row g-2">
-                        <div class="col-auto">
-                            <form asp-controller="Approvals" asp-action="Approve" asp-route-id="@Model.Request.Id" method="post">
-                                <button type="submit" class="btn btn-success">
-                                    <i class="bi bi-check-lg"></i> 核准
+                    <form asp-controller="Approvals" asp-action="Approve" asp-route-id="@Model.Request.Id" method="post" id="approveForm">
+                        <input type="hidden" name="signature_field_key" value="@currentSignatureFieldKey" />
+                        <input type="hidden" name="signature_field_id" id="approve_signature_field_id" value="" />
+                        <input type="hidden" name="signature_value" id="approve_signature_value" value="" />
+                        <div class="row g-2">
+                            <div class="col-auto">
+                                <button type="submit" class="btn btn-success" id="approveBtn">
+                                    <i class="bi bi-check-lg"></i> 簽名並核准
                                 </button>
-                            </form>
-                        </div>
-                        <div class="col">
-                            <form asp-controller="Approvals" asp-action="Reject" asp-route-id="@Model.Request.Id" method="post"
-                                  onsubmit="return confirm('確定要退回此申請？')">
+                            </div>
+                            <div class="col">
                                 <div class="input-group">
-                                    <input type="text" name="comment" class="form-control" placeholder="退回原因" required />
-                                    <button type="submit" class="btn btn-danger">
+                                    <input type="text" name="comment" class="form-control" placeholder="退回原因" id="rejectComment" />
+                                    <button type="button" class="btn btn-danger" id="rejectBtn">
                                         <i class="bi bi-x-lg"></i> 退回
                                     </button>
                                 </div>
-                            </form>
+                            </div>
                         </div>
-                    </div>
+                    </form>
+                    <form asp-controller="Approvals" asp-action="Reject" asp-route-id="@Model.Request.Id" method="post" id="rejectForm" style="display: none;">
+                        <input type="hidden" name="comment" id="rejectCommentHidden" />
+                    </form>
                 </div>
             </div>
         }
@@ -291,3 +346,376 @@
         }
     </div>
 </div>
+
+@if (canApprove)
+{
+    <!-- Signature Modal -->
+    <div id="signatureModal" class="signature-modal d-none">
+        <div class="signature-modal-content">
+            <div class="signature-header">
+                <h5 class="mb-0">請簽名</h5>
+                <button type="button" class="btn-close" onclick="closeSignatureModal()"></button>
+            </div>
+            <div class="signature-body">
+                <div class="signature-canvas-wrapper">
+                    <canvas id="signatureCanvas"></canvas>
+                </div>
+                <div class="signature-qr-section">
+                    <div class="qr-header">
+                        <i class="bi bi-phone"></i> 行動裝置簽名
+                    </div>
+                    <img id="modalQrCode" src="" alt="QR Code" style="width: 150px; height: 150px;" />
+                    <small class="text-muted d-block mt-2">掃描後請橫向簽名</small>
+                    <div class="signature-sync-preview mt-2">
+                        <img id="syncPreview" style="max-width: 100%; max-height: 80px; display: none;" />
+                        <span id="syncText" class="text-muted small">等待簽名...</span>
+                    </div>
+                </div>
+            </div>
+            <div class="signature-footer">
+                <button type="button" class="btn btn-outline-secondary" onclick="clearSignature()">清除</button>
+                <button type="button" class="btn btn-primary" onclick="saveSignature()">確定</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.0.0/dist/signature_pad.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@@microsoft/signalr@8.0.0/dist/browser/signalr.min.js"></script>
+    <script>
+        let currentFieldId = null;
+        let signaturePad = null;
+        let connection = null;
+        let currentSessionId = null;
+        let currentQrCode = null;
+        let mobileSignatureData = null;
+
+        async function ensureSession() {
+            if (currentSessionId && currentQrCode) {
+                return { sessionId: currentSessionId, qrCode: currentQrCode };
+            }
+            
+            console.log('Creating new session...');
+            const response = await fetch('/Signature/CreateSession', { method: 'POST' });
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('CreateSession failed:', response.status, errorText);
+                throw new Error(`Failed to create session: ${response.status}`);
+            }
+            const data = await response.json();
+            console.log('Session created:', { sessionId: data.sessionId, qrCodeLength: data.qrCode?.length });
+            currentSessionId = data.sessionId;
+            currentQrCode = data.qrCode;
+            return { sessionId: currentSessionId, qrCode: currentQrCode };
+        }
+
+        async function openSignatureModal(fieldId) {
+            currentFieldId = fieldId;
+            const modal = document.getElementById('signatureModal');
+            modal.classList.remove('d-none');
+
+            const canvas = document.getElementById('signatureCanvas');
+            const wrapper = canvas.parentElement;
+            canvas.width = wrapper.clientWidth;
+            canvas.height = wrapper.clientHeight;
+
+            signaturePad = new SignaturePad(canvas, {
+                backgroundColor: 'rgba(255, 255, 255, 0)',
+                penColor: 'rgb(0, 0, 0)'
+            });
+
+            mobileSignatureData = null;
+            updateSyncPreview('');
+
+            try {
+                const sessionData = await ensureSession();
+                console.log('Setting QR code, length:', sessionData.qrCode?.length);
+                document.getElementById('modalQrCode').src = sessionData.qrCode;
+                await connectToSignatureHub(sessionData.sessionId);
+            } catch (err) {
+                console.error("Session error:", err);
+                alert('無法啟動簽名會話，請重新整理頁面');
+            }
+        }
+
+        async function openMobileSignature(fieldId) {
+            currentFieldId = fieldId;
+            try {
+                const sessionData = await ensureSession();
+                const url = `/Signature/Sign?sessionId=${sessionData.sessionId}`;
+                window.open(url, '_blank', 'width=800,height=600');
+                openSignatureModal(fieldId);
+            } catch (err) {
+                console.error("Mobile signature error:", err);
+            }
+        }
+
+        async function connectToSignatureHub(sessionId) {
+            if (connection) {
+                await connection.stop();
+            }
+
+            connection = new signalR.HubConnectionBuilder()
+                .withUrl("/signatureHub")
+                .withAutomaticReconnect()
+                .build();
+
+            connection.on("SignatureUpdated", (imageData) => {
+                updateSyncPreview(imageData);
+                if (imageData && imageData.startsWith('data:image')) {
+                    mobileSignatureData = imageData;
+                    if (signaturePad) {
+                        signaturePad.fromDataURL(imageData);
+                    }
+                    const input = document.getElementById(`signature_input_${currentFieldId}`);
+                    input.value = imageData;
+                    const wrapper = document.querySelector(`.signature-field-wrapper[data-field-id="${currentFieldId}"]`);
+                    const previewBox = wrapper.querySelector('.signature-preview-box');
+                    previewBox.innerHTML = `<img src="${imageData}" class="signature-img" />`;
+                } else {
+                    mobileSignatureData = null;
+                    if (signaturePad) {
+                        signaturePad.clear();
+                    }
+                    const input = document.getElementById(`signature_input_${currentFieldId}`);
+                    input.value = '';
+                    const wrapper = document.querySelector(`.signature-field-wrapper[data-field-id="${currentFieldId}"]`);
+                    const previewBox = wrapper.querySelector('.signature-preview-box');
+                    previewBox.innerHTML = '<span class="text-muted small">點擊此處簽名</span>';
+                }
+            });
+
+            try {
+                await connection.start();
+                await connection.invoke("JoinSession", sessionId);
+            } catch (err) {
+                console.error("SignalR connection failed:", err);
+            }
+        }
+
+        function updateSyncPreview(imageData) {
+            const preview = document.getElementById('syncPreview');
+            const text = document.getElementById('syncText');
+            if (imageData && imageData.startsWith('data:image')) {
+                preview.src = imageData;
+                preview.style.display = 'block';
+                text.style.display = 'none';
+            } else {
+                preview.style.display = 'none';
+                text.style.display = 'block';
+                text.textContent = '等待簽名...';
+            }
+        }
+
+        async function closeSignatureModal() {
+            document.getElementById('signatureModal').classList.add('d-none');
+            
+            if (currentSessionId) {
+                try {
+                    await fetch(`/Signature/EndSession?sessionId=${currentSessionId}`, { method: 'POST' });
+                } catch (e) { console.error(e); }
+            }
+
+            if (connection) {
+                await connection.stop();
+                connection = null;
+            }
+            currentFieldId = null;
+            currentSessionId = null;
+            currentQrCode = null;
+            mobileSignatureData = null;
+        }
+
+        function clearSignature() {
+            if (signaturePad) signaturePad.clear();
+            mobileSignatureData = null;
+            updateSyncPreview('');
+        }
+
+        function saveSignature() {
+            const hasLocalSignature = signaturePad && !signaturePad.isEmpty();
+            const hasMobileSignature = mobileSignatureData && mobileSignatureData.startsWith('data:image');
+            
+            if (!hasLocalSignature && !hasMobileSignature) {
+                alert('請先簽名');
+                return;
+            }
+            
+            const dataUrl = hasMobileSignature ? mobileSignatureData : signaturePad.toDataURL('image/png');
+            
+            const input = document.getElementById(`signature_input_${currentFieldId}`);
+            input.value = dataUrl;
+
+            document.getElementById('approve_signature_field_id').value = currentFieldId;
+            document.getElementById('approve_signature_value').value = dataUrl;
+
+            const wrapper = document.querySelector(`.signature-field-wrapper[data-field-id="${currentFieldId}"]`);
+            const previewBox = wrapper.querySelector('.signature-preview-box');
+            previewBox.innerHTML = `<img src="${dataUrl}" class="signature-img" />`;
+
+            closeSignatureModal();
+        }
+
+        document.getElementById('rejectBtn').addEventListener('click', function() {
+            const comment = document.getElementById('rejectComment').value;
+            if (!comment) {
+                alert('請填寫退回原因');
+                return;
+            }
+            if (confirm('確定要退回此申請？')) {
+                document.getElementById('rejectCommentHidden').value = comment;
+                document.getElementById('rejectForm').submit();
+            }
+        });
+
+        document.getElementById('approveForm').addEventListener('submit', function(e) {
+            const signatureValue = document.getElementById('approve_signature_value').value;
+            if (!signatureValue) {
+                e.preventDefault();
+                alert('請先簽名後再核准');
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            if (!document.getElementById('signatureModal').classList.contains('d-none')) {
+                const canvas = document.getElementById('signatureCanvas');
+                const wrapper = canvas.parentElement;
+                canvas.width = wrapper.clientWidth;
+                canvas.height = wrapper.clientHeight;
+            }
+        });
+    </script>
+
+    <style>
+        .signature-preview-box {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            background-color: #f8f9fa;
+            transition: all 0.2s;
+            overflow: hidden;
+        }
+        .signature-preview-box:hover {
+            border-color: #0d6efd;
+            background-color: #e9ecef;
+        }
+        .signature-img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        .signature-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0,0,0,0.8);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .signature-modal-content {
+            background: white;
+            width: 90%;
+            max-width: 1000px;
+            height: 80vh;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .signature-header {
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .signature-body {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+        .signature-canvas-wrapper {
+            flex: 2;
+            position: relative;
+            background: #fff;
+            touch-action: none;
+            border-right: 1px solid #eee;
+        }
+        .signature-qr-section {
+            flex: 1;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #f8f9fa;
+        }
+        .qr-header {
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #0d6efd;
+        }
+        .signature-sync-preview {
+            width: 100%;
+            text-align: center;
+            min-height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px dashed #ccc;
+            border-radius: 4px;
+            background: white;
+        }
+        #signatureCanvas {
+            width: 100%;
+            height: 100%;
+        }
+        .signature-footer {
+            padding: 15px;
+            border-top: 1px solid #eee;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        @@media (max-width: 768px) {
+            .signature-modal-content {
+                width: 100vw;
+                height: 100vh;
+                max-width: none;
+                border-radius: 0;
+            }
+            .signature-body {
+                flex-direction: column;
+            }
+            .signature-canvas-wrapper {
+                flex: 1;
+                border-right: none;
+                border-bottom: 1px solid #eee;
+            }
+            .signature-qr-section {
+                flex: none;
+                padding: 10px;
+                max-height: 200px;
+            }
+        }
+        @@media (max-width: 768px) and (orientation: portrait) {
+            .signature-modal-content::before {
+                content: "請將裝置旋轉為橫向以獲得最佳簽名體驗";
+                display: block;
+                background: #ffc107;
+                color: #000;
+                text-align: center;
+                padding: 5px;
+                font-size: 12px;
+            }
+        }
+    </style>
+}

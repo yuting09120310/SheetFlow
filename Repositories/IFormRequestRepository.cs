@@ -14,5 +14,6 @@ public interface IFormRequestRepository
 
     Task<IEnumerable<FormRequestValue>> GetValuesAsync(long requestId);
     Task<long> CreateValueAsync(FormRequestValue value);
+    Task UpdateValueAsync(FormRequestValue value);
     Task DeleteValuesAsync(long requestId);
 }
