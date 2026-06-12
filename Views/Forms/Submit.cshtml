@@ -45,7 +45,9 @@
                 var skipField = field.FieldKey == "applicant" || field.FieldKey == "department";
                 if (skipField) continue;
 
-                if (field.FieldType == "Signature" && field.FieldKey != "acceptor") continue;
+                if (Model.FormName == "固定資產驗收單" && field.FieldType == "Signature" && field.FieldKey != "acceptor") continue;
+                
+                if (Model.FormName == "請購單" && field.FieldType == "Signature" && field.FieldKey != "signature") continue;
 
                 var isFullWidth = field.FieldType == "Textarea" || field.FieldKey == "description" || field.FieldKey == "reason" || field.FieldKey == "remarks" || field.FieldKey == "specification";
                 var colClass = isFullWidth ? "col-12" : "col-md-6 col-lg-4";

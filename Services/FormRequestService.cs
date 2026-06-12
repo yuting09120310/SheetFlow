@@ -364,10 +364,8 @@ public class FormRequestService : IFormRequestService
             resolvedSteps.Add((step, assignedUserId));
         }
 
-        var dedupedSteps = RemoveDuplicateConsecutiveApprover(resolvedSteps);
-
         int order = 1;
-        foreach (var (step, assignedUserId) in dedupedSteps)
+        foreach (var (step, assignedUserId) in resolvedSteps)
         {
             var instance = new ApprovalStepInstance
             {

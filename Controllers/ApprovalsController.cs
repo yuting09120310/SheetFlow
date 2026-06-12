@@ -38,7 +38,8 @@ public class ApprovalsController : Controller
             if (req != null) requests.Add(req);
         }
 
-        ViewBag.StepMap = stepList.ToDictionary(s => s.FormRequestId, s => s);
+        ViewBag.StepMap = stepList.GroupBy(s => s.FormRequestId)
+            .ToDictionary(g => g.Key, g => g.First());
         return View(requests);
     }
 

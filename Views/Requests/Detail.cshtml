@@ -17,13 +17,38 @@
     string GetCurrentStepSignatureFieldKey()
     {
         if (currentStep == null) return "";
-        var stepOrder = currentStep.StepOrder;
-        return stepOrder switch
+        
+        if (Model.Request.FormName == "固定資產驗收單")
         {
-            1 => "acceptance_unit_manager",
-            2 => "request_unit_manager",
-            _ => ""
-        };
+            return currentStep.StepOrder switch
+            {
+                1 => "acceptance_unit_manager",
+                2 => "request_unit_manager",
+                _ => ""
+            };
+        }
+        
+        if (Model.Request.FormName == "請購單")
+        {
+            return currentStep.StepOrder switch
+            {
+                1 => "department_manager_signature",
+                2 => "it_manager_signature",
+                3 => "accounting_manager_signature",
+                _ => ""
+            };
+        }
+        
+        var unsignedSignatureFields = Model.Fields
+            .Where(f => f.FieldType == "Signature")
+            .Where(f => {
+                var v = Model.Values.FirstOrDefault(val => val.FieldKey == f.FieldKey);
+                return v == null || string.IsNullOrEmpty(v.FieldValue) || !v.FieldValue.StartsWith("data:image");
+            })
+            .OrderBy(f => f.SortOrder)
+            .ToList();
+        
+        return unsignedSignatureFields.FirstOrDefault()?.FieldKey ?? "";
     }
 
     var currentSignatureFieldKey = GetCurrentStepSignatureFieldKey();
@@ -105,7 +130,7 @@
                     var fieldName = field.FieldKey == "signature" ? "人員簽名" : field.FieldName;
                     var isCurrentStepSignature = canApprove && field.FieldKey == currentSignatureFieldKey;
 
-                    if (field.FieldType == "Signature")
+                    if (Model.Request.FormName == "固定資產驗收單" && field.FieldType == "Signature")
                     {
                         if (!isSignature && !isCurrentStepSignature)
                         {
