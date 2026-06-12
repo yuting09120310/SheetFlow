@@ -198,10 +198,12 @@
                             var isCurrentStep = step.Status == "Pending";
                             var isCompleted = step.Status == "Approved";
                             var isRejected = step.Status == "Rejected";
+                            var isSkipped = step.Status == "Skipped";
                             var icon = isCompleted ? "bi-check-circle-fill text-success" :
                                        isRejected ? "bi-x-circle-fill text-danger" :
+                                       isSkipped ? "bi-skip-forward-fill text-secondary" :
                                        isCurrentStep ? "bi-hourglass-split text-warning" : "bi-circle text-muted";
-                            var bgClass = isCurrentStep ? "bg-warning bg-opacity-10" : "";
+                            var bgClass = isCurrentStep ? "bg-warning bg-opacity-10" : isSkipped ? "bg-light opacity-50" : "";
 
                             <div class="list-group-item @bgClass">
                                 <div class="d-flex align-items-center">
@@ -209,8 +211,8 @@
                                     <div class="flex-grow-1">
                                         <div class="d-flex justify-content-between">
                                             <strong>第 @step.StepOrder 步：@step.ApproverLabel</strong>
-                                            <span class="badge @(isCompleted ? "bg-success" : isRejected ? "bg-danger" : "bg-warning text-dark")">
-                                                @(isCompleted ? "已核准" : isRejected ? "已退回" : "待簽核")
+                                            <span class="badge @(isCompleted ? "bg-success" : isRejected ? "bg-danger" : isSkipped ? "bg-secondary" : "bg-warning text-dark")">
+                                                @(isCompleted ? "已核准" : isRejected ? "已退回" : isSkipped ? "已跳過" : "待簽核")
                                             </span>
                                         </div>
                                         @if (step.AssignedUserName != null)
@@ -224,6 +226,10 @@
                                         @if (step.ApprovedAt.HasValue)
                                         {
                                             <div class="text-muted small">@step.ApprovedAt.Value.ToString("yyyy-MM-dd HH:mm")</div>
+                                        }
+                                        @if (step.RejectedAt.HasValue)
+                                        {
+                                            <div class="text-muted small">@step.RejectedAt.Value.ToString("yyyy-MM-dd HH:mm")</div>
                                         }
                                     </div>
                                 </div>

@@ -257,6 +257,15 @@ public class FormRequestService : IFormRequestService
         currentStep.UpdatedAt = now;
         await _workflowRepo.UpdateStepInstanceAsync(currentStep);
 
+        // Mark all subsequent pending steps as Skipped
+        var allSteps = await _workflowRepo.GetStepInstancesByRequestAsync(requestId);
+        foreach (var step in allSteps.Where(s => s.StepOrder > currentStep.StepOrder && s.Status == "Pending"))
+        {
+            step.Status = "Skipped";
+            step.UpdatedAt = now;
+            await _workflowRepo.UpdateStepInstanceAsync(step);
+        }
+
         request.Status = "Rejected";
         request.RejectedAt = now;
         request.UpdatedAt = now;
